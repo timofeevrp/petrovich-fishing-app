@@ -8,14 +8,14 @@ import { reverseGeocode } from "./geocode.js";
 import { getLevelInfo } from "./levels.js";
 import { computeDayWindows } from "./timewindows.js";
 import { computeWarnings } from "./warnings.js";
-import { getGearTips } from "./gear.js";
 import { computeAchievements } from "./achievements.js";
 import { getMockLeaderboard, getMonthTheme, MONTHLY_PRIZE } from "./leaderboard.js";
-import { ARTICLES, getArticleById } from "./articles.js";
 import { fetchKpIndex, kpLabel } from "./geomagnetic.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
 const CACHE_TTL_MS = 20 * 60 * 1000;
+// TODO: заменить на реальный канал, когда будет готов
+const ZEN_URL = "https://dzen.ru/";
 
 const state = {
   userLocation: null,
@@ -269,7 +269,6 @@ async function loadHome({ skipGeo = false } = {}) {
 
   const dayWindows = computeDayWindows(heroWeather, hero.point.lat, hero.point.lon, Storage.getReports(hero.point.id));
   const warnings = computeWarnings(heroWeather.current, month);
-  const gearTips = getGearTips(heroWeather.current);
 
   document.getElementById("header-status").textContent = `Сегодня клёв: ${heroInterp.label.toLowerCase()}`;
 
@@ -298,9 +297,28 @@ async function loadHome({ skipGeo = false } = {}) {
       <span class="mp-arrow">›</span>
     </div>
 
+    <div class="hub-grid">
+      <div class="hub-card" data-hub="forecast">
+        <div class="hub-icon">📊</div>
+        <div class="hub-label">Прогноз</div>
+      </div>
+      <div class="hub-card" data-hub="reports">
+        <div class="hub-icon">📍</div>
+        <div class="hub-label">Отчёты</div>
+      </div>
+      <div class="hub-card" data-hub="articles">
+        <div class="hub-icon">📚</div>
+        <div class="hub-label">Статьи</div>
+      </div>
+      <div class="hub-card" data-hub="shop">
+        <div class="hub-icon">🛒</div>
+        <div class="hub-label">Товары</div>
+      </div>
+    </div>
+
     ${geoNotice}
 
-    <div class="card">
+    <div class="card" id="home-forecast-anchor">
       <div class="card-sub">${getGreeting()}! Прогноз на сегодня — ${hero.point.name} и окрестности</div>
       ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
       ${renderConfidenceBadge(heroResult)}
@@ -322,11 +340,9 @@ async function loadHome({ skipGeo = false } = {}) {
       </div>
     </div>
 
-    <div class="quick-actions">
-      <div class="quick-action" data-action="map"><span class="qa-icon">🗺️</span>Карта</div>
-      <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Отчёт</div>
-      <div class="quick-action" data-action="favorites"><span class="qa-icon">⭐</span>Избранное</div>
-      <div class="quick-action" data-action="relocate"><span class="qa-icon">📍</span>Локация</div>
+    <div class="quick-actions" style="grid-template-columns:1fr 1fr;">
+      <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
+      <div class="quick-action" data-action="relocate"><span class="qa-icon">📍</span>Обновить локацию</div>
     </div>
 
     ${warnings.length ? `
@@ -339,56 +355,25 @@ async function loadHome({ skipGeo = false } = {}) {
     <div class="card">
       ${bestPoints.map(({ point, forecast }) => renderPointListItem(point, forecast.result)).join("")}
     </div>
-
-    <div class="section-header"><span class="icon">🗺️</span><h3>Регионы</h3></div>
-    <div class="card">
-      ${renderRegionsPreview()}
-    </div>
-
-    <div class="section-header"><span class="icon">🏆</span><h3>Рейтинг рыбаков</h3></div>
-    <div class="card">
-      ${renderLeaderboardPreview(profileStats.reportsCount)}
-    </div>
-
-    <div class="section-header"><span class="icon">🎒</span><h3>Что взять с собой</h3></div>
-    <div class="card">
-      <div class="gear-tip-list">
-        ${gearTips.map((t) => `<div class="gear-tip"><span class="g-icon">✅</span><span>${t}</span></div>`).join("")}
-      </div>
-    </div>
-
-    <div class="section-header"><span class="icon">📚</span><h3>Полезные статьи</h3></div>
-    <div class="card">
-      ${renderArticlesList(ARTICLES.slice(0, 4))}
-    </div>
-
-    <div class="section-header"><span class="icon">📰</span><h3>Свежие отчёты</h3></div>
-    <div class="card">
-      ${recentReports.length ? renderRecentReportsFeed(recentReports) : `<div class="empty-state" style="padding:16px 0;"><div class="icon">📝</div>Пока никто не оставил отчёт. Станьте первым — это займёт минуту и сделает прогноз точнее для всех рыбаков рядом.</div>`}
-    </div>
   `;
 
   contentEl.innerHTML = html;
   bindOpenPointButtons(contentEl);
-  bindArticleCards(contentEl);
-  bindRegionChips(contentEl);
 
   document.getElementById("mini-profile-card").addEventListener("click", () => {
     state.viewStack = ["profile"];
     showView("profile", { pushHistory: false });
   });
 
-  const lbBtn = contentEl.querySelector("#btn-open-leaderboard");
-  if (lbBtn) lbBtn.addEventListener("click", () => openLeaderboard());
+  contentEl.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
+    document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => openRegions());
+  contentEl.querySelector('[data-hub="articles"]').addEventListener("click", () => {
+    window.open(ZEN_URL, "_blank");
+  });
+  contentEl.querySelector('[data-hub="shop"]').addEventListener("click", () => openProductsStub());
 
-  contentEl.querySelector('[data-action="map"]').addEventListener("click", () => {
-    state.viewStack = ["map"];
-    showView("map", { pushHistory: false });
-  });
-  contentEl.querySelector('[data-action="favorites"]').addEventListener("click", () => {
-    state.viewStack = ["favorites"];
-    showView("favorites", { pushHistory: false });
-  });
   contentEl.querySelector('[data-action="report"]').addEventListener("click", () => {
     state.viewStack = ["point", "report"];
     openReportForm(hero.point.id);
@@ -1285,23 +1270,6 @@ function renderFavoriteCard(entry) {
 // Демонстрационный макет: реальный общий рейтинг требует backend с другими
 // пользователями. Список соперников — mock-данные (см. leaderboard.js).
 
-function renderLeaderboardPreview(userReportsCount) {
-  const profile = Storage.getProfile();
-  const board = getMockLeaderboard(profile.name, userReportsCount);
-  const top3 = board.slice(0, 3);
-  const you = board.find((b) => b.isYou);
-
-  return `
-    <div class="lb-theme-banner">
-      <div class="lb-theme-label">Тема месяца · двойные баллы</div>
-      <div class="lb-theme-value">🐟 ${getMonthTheme()}</div>
-    </div>
-    ${top3.map((b) => renderLeaderboardRow(b)).join("")}
-    ${you.rank > 3 ? `<div style="text-align:center;color:var(--gray-500);font-size:12px;padding:2px 0;">⋯</div>${renderLeaderboardRow(you)}` : ""}
-    <button class="btn-secondary btn-full" id="btn-open-leaderboard" style="margin-top:10px;">Смотреть весь рейтинг</button>
-  `;
-}
-
 function renderLeaderboardRow(b) {
   return `
     <div class="lb-row ${b.isYou ? "you" : ""}">
@@ -1309,6 +1277,10 @@ function renderLeaderboardRow(b) {
       <div class="lb-name">${b.name}</div>
       <div class="lb-count">${b.reports} отч.</div>
     </div>`;
+}
+
+function openProductsStub() {
+  showView("products");
 }
 
 function openLeaderboard() {
@@ -1335,42 +1307,6 @@ function openLeaderboard() {
   `;
 }
 
-// ---------- СТАТЬИ ----------
-
-function renderArticlesList(articles) {
-  return articles
-    .map(
-      (a) => `
-    <div class="article-card" data-open-article="${a.id}">
-      <div class="article-icon">${a.icon}</div>
-      <div>
-        <div class="article-title">${a.title}</div>
-        <div class="article-summary">${a.summary}</div>
-      </div>
-    </div>`
-    )
-    .join("");
-}
-
-function bindArticleCards(container) {
-  container.querySelectorAll("[data-open-article]").forEach((el) => {
-    el.addEventListener("click", () => openArticle(el.dataset.openArticle));
-  });
-}
-
-function openArticle(id) {
-  const article = getArticleById(id);
-  if (!article) return;
-  showView("article");
-  document.getElementById("article-content").innerHTML = `
-    <div class="card">
-      <div class="article-icon" style="margin-bottom:10px;">${article.icon}</div>
-      <div class="card-title" style="font-size:19px;">${article.title}</div>
-      <div class="article-body">${article.body.map((p) => `<p>${p}</p>`).join("")}</div>
-    </div>
-  `;
-}
-
 // ---------- РЕГИОНЫ ----------
 
 function getRegionsSummary() {
@@ -1390,27 +1326,6 @@ function getRegionsSummary() {
       return { ...r, reportsCount };
     })
     .sort((a, b) => b.points.length - a.points.length);
-}
-
-function renderRegionsPreview() {
-  const regions = getRegionsSummary().slice(0, 4);
-  if (!regions.length) {
-    return `<div class="empty-state" style="padding:16px 0;">Пока нет точек с определённым регионом.</div>`;
-  }
-  return `
-    <div class="region-chip-row">
-      ${regions
-        .map(
-          (r) => `
-        <div class="region-chip" data-open-region="${escapeHtml(r.region)}">
-          <div class="region-chip-name">${r.region}</div>
-          <div class="region-chip-count">${r.points.length} точ. · ${r.reportsCount} отч.</div>
-        </div>`
-        )
-        .join("")}
-    </div>
-    <button class="btn-secondary btn-full" id="btn-open-regions" style="margin-top:10px;">Все регионы</button>
-  `;
 }
 
 function bindRegionChips(container) {
@@ -1530,6 +1445,8 @@ function renderProfile() {
       <div class="card-row" style="margin-top:8px;"><span>С нами с</span><span class="card-sub">${memberSince}</span></div>
     </div>
 
+    <button class="btn-secondary btn-full" id="btn-profile-leaderboard">🏆 Рейтинг рыбаков</button>
+
     <div class="section-header"><span class="icon">🏅</span><h3>Достижения (${earnedCount}/${achievements.length})</h3></div>
     <div class="achv-grid">
       ${achievements
@@ -1566,6 +1483,7 @@ function renderProfile() {
     };
     reader.readAsDataURL(file);
   });
+  document.getElementById("btn-profile-leaderboard").addEventListener("click", () => openLeaderboard());
 }
 
 // ---------- СТАРТ ----------
