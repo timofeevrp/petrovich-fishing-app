@@ -257,7 +257,7 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.classList.remove("hidden");
 
   if (!withForecast.length) {
-    document.getElementById("header-status").textContent = "";
+    document.getElementById("header-status").textContent = "Твоё приложение для рыбалки";
     contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.</div>`;
     return;
   }
