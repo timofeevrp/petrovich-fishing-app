@@ -96,13 +96,25 @@ const BASE_WEIGHTS = {
 };
 
 const FACTOR_LABELS = {
-  pressure: { up: "Давление стабильно или плавно падает, это хороший знак", down: "Давление резко растёт, клёв может ухудшиться" },
+  pressure: { up: "Давление ровное. Для клёва это хороший знак.", down: "Давление резко растёт, клёв может ухудшиться" },
   wind: { up: "Комфортный ветер для клёва", down: "Слишком сильный ветер или штиль" },
   solunar: { up: "Хорошая фаза луны / solunar-окно сейчас", down: "Слабая лунная фаза для клёва" },
   temp: { up: "Комфортная температура воздуха", down: "Температура далека от комфортной" },
   precipCloud: { up: "Облачность и осадки благоприятны", down: "Сильный дождь или яркое солнце мешают клёву" },
   season: { up: "Хороший сезон для клёва", down: "Не самый активный сезон" },
   userReports: { up: "Рыбаки рядом сообщают, что клюёт", down: "Рыбаки рядом сообщают, что клёв слабый" },
+};
+
+// Короткие 2-3-словные версии для чипов в главной карточке — FACTOR_LABELS
+// (выше) остаются для развёрнутого разбора "Почему такой прогноз".
+const FACTOR_SHORT_LABELS = {
+  pressure: { up: "Давление ровное", down: "Давление растёт" },
+  wind: { up: "Ветер комфортный", down: "Ветер сильный" },
+  solunar: { up: "Луна благоприятна", down: "Луна слабая" },
+  temp: { up: "Температура в норме", down: "Температура неидеальна" },
+  precipCloud: { up: "Осадки не мешают", down: "Дождь мешает" },
+  season: { up: "Сезон хороший", down: "Межсезонье" },
+  userReports: { up: "Рыбаки подтверждают", down: "Клёв слабый по отчётам" },
 };
 
 const FACTOR_NAMES = {
@@ -161,7 +173,7 @@ export function computeScore({ weather, astro, reports, now = new Date() }) {
 
   const topFactors = sortedContributions
     .slice(0, 2)
-    .map((c) => (c.contribution >= 0 ? FACTOR_LABELS[c.key].up : FACTOR_LABELS[c.key].down));
+    .map((c) => (c.contribution >= 0 ? FACTOR_SHORT_LABELS[c.key].up : FACTOR_SHORT_LABELS[c.key].down));
 
   const allFactors = sortedContributions.map((c) => ({
     key: c.key,
@@ -201,7 +213,7 @@ export function scoreInterpretation(score) {
   if (score <= 15) return { emoji: "🔴", label: "Очень низкий шанс", tier: 0, text: "Сегодня не лучший день. Лучше выбрать другую дату." };
   if (score <= 35) return { emoji: "🟠", label: "Слабый клёв", tier: 1, text: "Шанс есть, но небольшой. Погода не на вашей стороне." };
   if (score <= 55) return { emoji: "🟡", label: "Средний потенциал", tier: 2, text: "Может сработать в правильное время суток." };
-  if (score <= 75) return { emoji: "🟢", label: "Хороший шанс", tier: 3, text: "Погода располагает. Стоит выбраться." };
+  if (score <= 75) return { emoji: "🟢", label: "Хороший шанс", tier: 3, text: "Шанс хороший. Можно ехать." };
   if (score <= 90) return { emoji: "🟢", label: "Отличные условия", tier: 4, text: "Один из лучших дней за последнее время. Не упустите." };
   return { emoji: "🟩", label: "Пик активности", tier: 4, text: "Редкое сочетание факторов. Шансы максимальные." };
 }

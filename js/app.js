@@ -271,13 +271,34 @@ async function loadHome({ skipGeo = false } = {}) {
   const warnings = computeWarnings(heroWeather.current, month);
 
   const geoNotice = state.geoDenied
-    ? `<div class="card" style="background:var(--green-100);border:none;">🧭 Не вижу вашу геолокацию, показываю проверенные места по Москве и области. Разрешите доступ в браузере или выберите точку на карте вручную.</div>`
+    ? `<div class="card location-notice">
+        <div class="ln-row">
+          <span class="ln-icon">🧭</span>
+          <div>
+            <div class="ln-title">Геолокация выключена</div>
+            <div class="ln-text">Показываю проверенные места рядом с Москвой. Можно выбрать точку на карте вручную.</div>
+          </div>
+        </div>
+        <div class="ln-actions">
+          <button class="btn-secondary" id="btn-geo-allow">Разрешить доступ</button>
+          <button class="btn-secondary" id="btn-geo-map">Выбрать на карте</button>
+        </div>
+      </div>`
     : "";
 
   const bestPoints = withForecast
     .slice()
     .sort((a, b) => b.forecast.result.score - a.forecast.result.score)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map((entry) => ({
+      ...entry,
+      windows: computeDayWindows(
+        entry.forecast.weather,
+        entry.point.lat,
+        entry.point.lon,
+        Storage.getReports(entry.point.id)
+      ),
+    }));
 
   const recentReports = Storage.getReports().slice(0, 3);
   const profile = Storage.getProfile();
@@ -299,26 +320,31 @@ async function loadHome({ skipGeo = false } = {}) {
       <div class="hub-card" data-hub="forecast">
         <div class="hub-icon">📊</div>
         <div class="hub-label">Прогноз</div>
+        <div class="hub-sub">Шансы, часы и причины</div>
       </div>
       <div class="hub-card" data-hub="reports">
         <div class="hub-icon">📍</div>
         <div class="hub-label">Отчёты</div>
+        <div class="hub-sub">Что ловят рядом</div>
       </div>
       <div class="hub-card" data-hub="articles">
         <div class="hub-icon">📚</div>
         <div class="hub-label">Статьи</div>
+        <div class="hub-sub">Советы и разборы</div>
       </div>
       <div class="hub-card" data-hub="shop">
         <div class="hub-icon">🎒</div>
         <div class="hub-label">Что взять</div>
+        <div class="hub-sub">Снасти по погоде</div>
       </div>
     </div>
 
     ${geoNotice}
 
     <div class="card" id="home-forecast-anchor">
-      <div class="card-sub">${getGreeting()}! Прогноз на сегодня: ${hero.point.name} и окрестности</div>
+      <div class="card-sub">${getGreeting()}. Прогноз на сегодня: ${hero.point.name}</div>
       ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
+      <div class="best-window-line">⏰ Лучшее окно: ${dayWindows.best.label.toLowerCase()}, ${dayWindows.best.result.score} из 100</div>
       ${renderConfidenceBadge(heroResult)}
     </div>
 
@@ -338,9 +364,12 @@ async function loadHome({ skipGeo = false } = {}) {
       </div>
     </div>
 
-    <div class="quick-actions" style="grid-template-columns:1fr 1fr;">
+    <div class="section-header"><span class="icon">⚡</span><h3>Быстрые действия</h3></div>
+    <div class="quick-actions">
       <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
       <div class="quick-action" data-action="relocate"><span class="qa-icon">📍</span>Обновить локацию</div>
+      <div class="quick-action" data-action="map"><span class="qa-icon">🗺️</span>Открыть карту</div>
+      <div class="quick-action" data-action="gear"><span class="qa-icon">🎒</span>Что взять</div>
     </div>
 
     ${warnings.length ? `
@@ -351,7 +380,7 @@ async function loadHome({ skipGeo = false } = {}) {
 
     <div class="section-header"><span class="icon">📍</span><h3>Куда поехать сегодня</h3></div>
     <div class="card">
-      ${bestPoints.map(({ point, forecast }) => renderPointListItem(point, forecast.result)).join("")}
+      ${bestPoints.map((entry) => renderPlaceRecommendationCard(entry)).join("")}
     </div>
   `;
 
@@ -378,6 +407,34 @@ async function loadHome({ skipGeo = false } = {}) {
     showToast("Обновляю геолокацию...");
     await loadHome();
   });
+  contentEl.querySelector('[data-action="map"]').addEventListener("click", () => showView("map"));
+  contentEl.querySelector('[data-action="gear"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
+
+  const geoAllowBtn = document.getElementById("btn-geo-allow");
+  if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
+  const geoMapBtn = document.getElementById("btn-geo-map");
+  if (geoMapBtn) geoMapBtn.addEventListener("click", () => showView("map"));
+}
+
+// Более подробная карточка места для "Куда поехать сегодня" на главной —
+// отдельная от компактного renderPointListItem, который используют
+// избранное/регионы/поиск (там 3 доп. вычисления на точку не нужны).
+function renderPlaceRecommendationCard({ point, forecast, distanceKm, windows }) {
+  const interp = scoreInterpretation(forecast.result.score);
+  const reason = forecast.result.topFactors[0] || "";
+  return `
+    <div class="place-card" data-open-point="${point.id}">
+      <div class="point-mini-score sc-${interp.tier}">${forecast.result.score}</div>
+      <div style="flex:1;">
+        <div class="card-title">${point.name}</div>
+        <div class="card-sub" style="margin-bottom:6px;">${point.town || ""}${distanceKm != null ? " · " + distanceKm.toFixed(1) + " км" : ""}</div>
+        <div class="place-meta">
+          <span class="place-meta-chip">${windows.best.icon} Лучше ${windows.best.label.toLowerCase()}</span>
+          ${reason ? `<span class="place-meta-chip">${reason}</span>` : ""}
+        </div>
+      </div>
+      <span class="place-arrow">›</span>
+    </div>`;
 }
 
 function renderConfidenceBadge(result) {
@@ -540,11 +597,69 @@ function initMapIfNeeded() {
   renderMarkers();
 
   state.map.on("click", (e) => {
+    // Если открыт превью-лист точки — первый тап по карте просто закрывает его,
+    // чтобы не ставить adhoc-точку случайно поверх уже выбранного места.
+    if (closePlaceSheet()) return;
     openAdhocPoint(e.latlng.lat, e.latlng.lng);
   });
 }
 
+// ---------- ПРЕВЬЮ ТОЧКИ НА КАРТЕ (bottom-sheet) ----------
+
+function closePlaceSheet() {
+  const sheet = document.getElementById("map-place-sheet");
+  const wasOpen = sheet.classList.contains("open");
+  sheet.classList.remove("open");
+  return wasOpen;
+}
+
+async function showPlaceSheet(point) {
+  const sheet = document.getElementById("map-place-sheet");
+  sheet.classList.add("open");
+  sheet.innerHTML = `<div class="state-block" style="padding:16px;"><div class="spinner" style="width:22px;height:22px;margin:0 auto;"></div></div>`;
+
+  try {
+    const { result, weather } = await getPointForecast(point);
+    const interp = scoreInterpretation(result.score);
+    const dayWindows = computeDayWindows(weather, point.lat, point.lon, Storage.getReports(point.id));
+    const loc = state.userLocation || DEFAULT_CENTER;
+    const distanceKm = haversineKm(loc, point);
+    const isFav = Storage.isFavorite(point.id);
+
+    sheet.innerHTML = `
+      <div class="ps-head">
+        <div class="point-mini-score sc-${interp.tier}">${result.score}</div>
+        <div style="flex:1;">
+          <div class="ps-title">${point.name}</div>
+          <div class="ps-sub">${interp.emoji} ${interp.label} · ${distanceKm.toFixed(1)} км · лучше ${dayWindows.best.label.toLowerCase()}</div>
+        </div>
+        <button class="ps-close" id="ps-close-btn">✕</button>
+      </div>
+      <div class="ps-actions">
+        <button class="btn-primary" id="ps-forecast-btn">Прогноз</button>
+        <button class="btn-secondary" id="ps-route-btn">Маршрут</button>
+        <button class="btn-secondary" id="ps-save-btn">${isFav ? "★ В избранном" : "☆ Сохранить"}</button>
+      </div>
+    `;
+    document.getElementById("ps-close-btn").addEventListener("click", closePlaceSheet);
+    document.getElementById("ps-forecast-btn").addEventListener("click", () => {
+      closePlaceSheet();
+      openPoint(point.id);
+    });
+    document.getElementById("ps-route-btn").addEventListener("click", () => {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${point.lat},${point.lon}`, "_blank");
+    });
+    document.getElementById("ps-save-btn").addEventListener("click", () => {
+      Storage.toggleFavorite(point.id);
+      showPlaceSheet(point);
+    });
+  } catch {
+    sheet.innerHTML = `<div class="empty-state" style="padding:12px;font-size:13px;">Не получилось загрузить прогноз для точки.</div>`;
+  }
+}
+
 async function renderMarkers() {
+  closePlaceSheet();
   state.markersLayer.clearLayers();
   const typeFilter = document.getElementById("filter-type").value;
   let points = getAllPoints();
@@ -560,7 +675,7 @@ async function renderMarkers() {
       iconAnchor: [15, 30],
     });
     const marker = L.marker([point.lat, point.lon], { icon }).addTo(state.markersLayer);
-    marker.on("click", () => openPoint(point.id));
+    marker.on("click", () => showPlaceSheet(point));
 
     getPointForecast(point)
       .then(({ result }) => {
@@ -1618,11 +1733,11 @@ function renderProfile() {
       ${next ? `<div class="level-bar"><div class="level-bar-fill" style="width:${progress}%;"></div></div>` : ""}
     </div>
 
-    <div class="card">
-      <div class="card-row"><span>Отчётов оставлено</span><span class="badge">${stats.reportsCount}</span></div>
-      <div class="card-row" style="margin-top:8px;"><span>Сохранённых мест</span><span class="badge">${stats.favCount}</span></div>
-      <div class="card-row" style="margin-top:8px;"><span>Водоёмов освоено</span><span class="badge">${stats.distinctPoints}</span></div>
-      <div class="card-row" style="margin-top:8px;"><span>С нами с</span><span class="card-sub">${memberSince}</span></div>
+    <div class="stats-grid">
+      <div class="stat-tile"><div class="stat-value">${stats.reportsCount}</div><div class="stat-label">Отчётов</div></div>
+      <div class="stat-tile"><div class="stat-value">${stats.favCount}</div><div class="stat-label">Сохранено мест</div></div>
+      <div class="stat-tile"><div class="stat-value">${stats.distinctPoints}</div><div class="stat-label">Водоёмов освоено</div></div>
+      <div class="stat-tile"><div class="stat-value" style="font-size:15px;">${memberSince}</div><div class="stat-label">С нами с</div></div>
     </div>
 
     <button class="btn-secondary btn-full" id="btn-profile-leaderboard">🏆 Рейтинг рыбаков</button>
@@ -1648,7 +1763,7 @@ function renderProfile() {
       </div>
     </div>
 
-    <div class="empty-state" style="font-size:12px;">Это прототип: имя и данные хранятся только в вашем браузере, без сервера и авторизации. Со своего телефона или другого браузера они видны не будут.</div>
+    <div class="empty-state" style="font-size:12px;">Данные хранятся только в этом браузере. Без регистрации и сервера.</div>
   `;
   document.getElementById("profile-name").addEventListener("change", (e) => {
     Storage.updateProfile({ name: e.target.value });
