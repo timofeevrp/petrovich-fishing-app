@@ -347,6 +347,25 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
 }
 .map-pin span { transform: rotate(45deg); }
 
+.leaflet-control-zoom,
+.leaflet-control-layers {
+  border-radius: 12px !important;
+  border: none !important;
+  box-shadow: var(--shadow) !important;
+  overflow: hidden;
+}
+.leaflet-control-layers { background: var(--surface) !important; }
+.leaflet-control-layers-toggle { width: 34px !important; height: 34px !important; }
+.leaflet-control-layers-expanded {
+  padding: 8px 10px !important;
+  color: var(--text);
+  font-size: 13px;
+}
+.leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
 /* FORM */
 .field-label {
   display: block;
@@ -876,6 +895,47 @@ textarea { resize: vertical; }
   color: var(--gray-500);
   margin-top: 2px;
 }
+
+/* BITE CHART (клёв по часам) */
+.bite-chart-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.bc-tab {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 7px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--gray-50);
+  color: var(--gray-500);
+  cursor: pointer;
+}
+.bc-tab.active { background: var(--green-100); color: var(--green-700); }
+.bite-chart { width: 100%; height: 110px; display: block; }
+.bc-grid { stroke: var(--gray-200); stroke-width: 1; }
+.bc-bar { fill: var(--green-600); }
+.bc-bar-now { fill: var(--green-700); opacity: 1; stroke: var(--surface); stroke-width: 1.5; }
+.bc-now-label { font-size: 10px; font-weight: 700; fill: var(--green-700); text-anchor: middle; }
+.bite-chart-hours {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--gray-500);
+  padding: 0 2px;
+}
+.bite-chart-summary {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray-200);
+}
+.bcs-item { flex: 1; text-align: center; }
+.bcs-label { font-size: 11px; color: var(--gray-500); }
+.bcs-value { font-size: 13px; font-weight: 700; margin-top: 2px; }
 
 /* SPECIES GRID (вид рыбы × время суток) */
 .sg-wrap { overflow-x: auto; }

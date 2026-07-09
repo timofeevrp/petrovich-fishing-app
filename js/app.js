@@ -7,6 +7,7 @@ import { computeSpeciesLikelihood, DEFAULT_SPECIES_POOL } from "./species.js";
 import { reverseGeocode } from "./geocode.js";
 import { getLevelInfo } from "./levels.js";
 import { computeDayWindows } from "./timewindows.js";
+import { computeHourlyBiteSeries } from "./bitechart.js";
 import { computeWarnings } from "./warnings.js";
 import { computeAchievements } from "./achievements.js";
 import { getMockLeaderboard, getMonthTheme, MONTHLY_PRIZE } from "./leaderboard.js";
@@ -486,11 +487,28 @@ function initMapIfNeeded() {
   }
   mapInitialized = true;
   const center = state.userLocation || DEFAULT_CENTER;
-  state.map = L.map("map").setView([center.lat, center.lon], 9);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap",
-    maxZoom: 18,
+  state.map = L.map("map", { zoomControl: false }).setView([center.lat, center.lon], 9);
+  L.control.zoom({ position: "bottomright" }).addTo(state.map);
+
+  // Схема — CARTO Voyager (чище и современнее дефолтных тайлов OSM, без подписей-флагов
+  // стран на границах, которые многим бросались в глаза). Спутник — Esri World Imagery,
+  // удобно смотреть форму берега и растительность вокруг водоёма.
+  const schemeLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    attribution: "© OpenStreetMap, © CARTO",
+    maxZoom: 19,
+    subdomains: "abcd",
   }).addTo(state.map);
+  const satelliteLayer = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { attribution: "Tiles © Esri", maxZoom: 19 }
+  );
+  L.control
+    .layers({ "🗺️ Схема": schemeLayer, "🛰️ Спутник": satelliteLayer }, null, {
+      position: "bottomright",
+      collapsed: true,
+    })
+    .addTo(state.map);
+
   state.markersLayer = L.layerGroup().addTo(state.map);
 
   if (state.userLocation) {
@@ -620,6 +638,9 @@ function saveAdhocPoint(point) {
 let currentDays = [];
 let currentSelectedIdx = 0;
 let currentOpenPoint = null;
+let currentWeather = null;
+let currentReports = [];
+let biteChartMode = "weather";
 
 async function openPoint(pointOrId) {
   const point = typeof pointOrId === "string" ? getPointById(pointOrId) : pointOrId;
@@ -646,8 +667,11 @@ async function openPoint(pointOrId) {
     };
     currentDays = days;
     currentSelectedIdx = 0;
+    currentWeather = weather;
+    biteChartMode = "weather";
 
     const reports = point.adhoc ? [] : Storage.getReports(point.id);
+    currentReports = reports;
     const isFav = point.adhoc ? false : Storage.isFavorite(point.id);
     const isAdhoc = !!point.adhoc;
 
@@ -691,6 +715,9 @@ async function openPoint(pointOrId) {
             .join("")}
         </div>
       </div>
+
+      <div class="section-header"><span class="icon">📊</span><h3>Клёв по часам</h3></div>
+      <div class="card" id="bite-chart-slot"></div>
 
       <div class="section-header"><span class="icon">🌦️</span><h3>Погода по часам</h3></div>
       <div class="card">
@@ -747,6 +774,7 @@ async function openPoint(pointOrId) {
     updateScoreSlot();
     updateWhySlot();
     updateSpeciesSlot(point);
+    updateBiteChartSlot();
     loadGeomagneticLine();
 
     if (!point.town) {
@@ -854,6 +882,7 @@ function renderDayPills() {
       updateScoreSlot();
       updateWhySlot();
       updateSpeciesSlot(currentOpenPoint);
+      updateBiteChartSlot();
     });
   });
 }
@@ -914,6 +943,84 @@ function updateSpeciesSlot(point) {
         </div>`;
       })
       .join("")}
+  `;
+}
+
+function updateBiteChartSlot() {
+  const day = currentDays[currentSelectedIdx];
+  const slot = document.getElementById("bite-chart-slot");
+  if (!slot || !day || !currentWeather || !currentOpenPoint) return;
+  const series = computeHourlyBiteSeries({
+    weather: currentWeather,
+    lat: currentOpenPoint.lat,
+    lon: currentOpenPoint.lon,
+    reports: currentReports,
+    date: day.date,
+  });
+  slot.innerHTML = renderBiteChart(series, biteChartMode, !!day.isNow, new Date().getHours());
+}
+
+document.getElementById("point-content").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-bc-mode]");
+  if (!btn) return;
+  biteChartMode = btn.dataset.bcMode;
+  updateBiteChartSlot();
+});
+
+// Почасовой бар-чарт клёва на сутки (00–23): высота и цвет бара = score/100,
+// текущий час подсвечен и подписан значением. Есть вкладки погода/луна —
+// solunar-подсчёт берём как отдельный субфактор той же формулы (score.js).
+function renderBiteChart(series, mode, isToday, nowHour) {
+  const key = mode === "moon" ? "solunarScore" : "score";
+  const W = 300, H = 96, padTop = 14;
+  const slotW = W / 24;
+  const barW = Math.max(1, slotW - 2);
+
+  const bars = series.hours
+    .map((h, i) => {
+      const val = h[key];
+      const barH = Math.max(2, (val / 100) * H);
+      const x = i * slotW + (slotW - barW) / 2;
+      const y = padTop + H - barH;
+      const isNow = isToday && h.hour === nowHour;
+      if (isNow) {
+        return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" class="bc-bar bc-bar-now" />
+          <text x="${(x + barW / 2).toFixed(1)}" y="${Math.max(10, y - 5).toFixed(1)}" class="bc-now-label">${val}%</text>`;
+      }
+      const opacity = (0.28 + (val / 100) * 0.72).toFixed(2);
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" class="bc-bar" style="opacity:${opacity}" />`;
+    })
+    .join("");
+
+  const gridLines = [25, 50, 75, 100]
+    .map((pct) => {
+      const y = (padTop + H - (pct / 100) * H).toFixed(1);
+      return `<line x1="0" y1="${y}" x2="${W}" y2="${y}" class="bc-grid" />`;
+    })
+    .join("");
+
+  const summary =
+    mode === "moon"
+      ? { avg: series.avgSolunar, peak: series.peakSolunarLabel, good: series.goodSolunarLabel }
+      : { avg: series.avgScore, peak: series.peakLabel, good: series.goodLabel };
+
+  return `
+    <div class="bite-chart-tabs">
+      <button class="bc-tab ${mode === "weather" ? "active" : ""}" data-bc-mode="weather">Клёв по погоде</button>
+      <button class="bc-tab ${mode === "moon" ? "active" : ""}" data-bc-mode="moon">Клёв по луне</button>
+    </div>
+    <svg viewBox="0 0 ${W} ${padTop + H}" class="bite-chart" preserveAspectRatio="none">
+      ${gridLines}
+      ${bars}
+    </svg>
+    <div class="bite-chart-hours">
+      ${[0, 4, 8, 12, 16, 20].map((h) => `<span>${String(h).padStart(2, "0")}:00</span>`).join("")}
+    </div>
+    <div class="bite-chart-summary">
+      <div class="bcs-item"><div class="bcs-label">Пик клёва</div><div class="bcs-value">${summary.peak}</div></div>
+      <div class="bcs-item"><div class="bcs-label">Средняя оценка</div><div class="bcs-value">${summary.avg}%</div></div>
+      <div class="bcs-item"><div class="bcs-label">Хороший клёв</div><div class="bcs-value">${summary.good}</div></div>
+    </div>
   `;
 }
 

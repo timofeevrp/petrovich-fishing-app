@@ -12,7 +12,7 @@ const CHECKPOINTS = [
   { key: "night", label: "Ночь", icon: "🌙", hour: 23 },
 ];
 
-function findClosestIndex(times, target) {
+export function findClosestIndex(times, target) {
   let best = 0;
   let bestDiff = Infinity;
   times.forEach((t, i) => {
@@ -25,7 +25,7 @@ function findClosestIndex(times, target) {
   return best;
 }
 
-function hourlySnapshot(hourly, idx) {
+export function hourlySnapshot(hourly, idx) {
   const idx3 = Math.max(0, idx - 3);
   return {
     pressure: hourly.pressure_msl[idx],
