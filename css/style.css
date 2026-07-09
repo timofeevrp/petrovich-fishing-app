@@ -30,6 +30,10 @@
   --radius-md: 14px;
   --radius-lg: 18px;
   --transition-fast: 120ms ease;
+
+  /* Фон шапки/онбординга — отдельный токен от --green-700 (тот остаётся
+     цветом текста/иконок и должен читаться зелёным, а не чернеть вместе с фоном). */
+  --header-bg: var(--green-700);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,7 +50,10 @@
     --star-empty: #45524a;
     --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
     --yellow-100: #3a2f10;
-    --cream: #141a17;
+    --cream: #0d100d;
+    /* почти чёрный фон шапки/онбординга + жёлтый акцент — в духе постерной
+       айдентики (карась-бейдж), которая понравилась пользователю */
+    --header-bg: #0f1210;
   }
 }
 
@@ -80,7 +87,7 @@ body {
 
 /* HEADER */
 .app-header {
-  background: var(--green-700);
+  background: var(--header-bg);
   color: var(--white);
   position: sticky;
   top: 0;
@@ -857,7 +864,7 @@ textarea { resize: vertical; }
   justify-content: center;
   text-align: center;
   padding: 32px 24px;
-  background: var(--green-700);
+  background: var(--header-bg);
   color: #fff;
 }
 .onboarding-logo {
