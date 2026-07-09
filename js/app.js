@@ -14,6 +14,7 @@ import { getMockLeaderboard, getMonthTheme, MONTHLY_PRIZE } from "./leaderboard.
 import { fetchKpIndex, kpLabel } from "./geomagnetic.js";
 import { ARTICLES, getArticleById, estimateReadMinutes } from "./articles.js";
 import { getGearTips } from "./gear.js";
+import { normalizeMaxContact, renderMaxLink } from "./maxlink.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
 const CACHE_TTL_MS = 20 * 60 * 1000;
@@ -444,16 +445,18 @@ function renderConfidenceBadge(result) {
 
 function renderRecentReportsFeed(reports) {
   return reports
-    .map((r) => {
+    .map((raw) => {
+      const r = normalizeReport(raw);
       const point = getPointById(r.pointId);
       const date = new Date(r.datetime);
       const timeAgo = formatTimeAgo(date);
       return `
       <div class="mini-report">
         <div>${r.isBiting ? "🟢" : "🔴"}</div>
-        <div>
-          <div class="mini-report-point">${point ? point.name : "Точка"}${r.species ? " · " + r.species : ""}</div>
-          <div class="mini-report-meta">${timeAgo}${r.comment ? " · " + r.comment : ""}</div>
+        <div style="flex:1;">
+          ${renderReportAuthorLine(r)}
+          <div class="mini-report-point">${locationLabel(r, point)}${r.species ? " · " + r.species : ""}</div>
+          <div class="mini-report-meta">${timeAgo}${r.comment ? " · " + escapeHtml(r.comment) : ""}</div>
         </div>
       </div>`;
     })
@@ -898,7 +901,7 @@ async function openPoint(pointOrId) {
       ${!isAdhoc ? `
       <div class="card">
         <div class="card-title">Отчёты рыбаков (${reports.length})</div>
-        ${renderReportsList(reports)}
+        ${renderReportsList(reports, point)}
       </div>` : `<div class="empty-state" style="font-size:13px;">Сохраните это место, чтобы оставлять отчёты и видеть, что здесь ловят другие рыбаки.</div>`}
     `;
 
@@ -908,6 +911,7 @@ async function openPoint(pointOrId) {
     updateSpeciesSlot(point);
     updateBiteChartSlot();
     loadGeomagneticLine();
+    bindReportAuthorLinks(container);
 
     if (!point.town) {
       reverseGeocode(point.lat, point.lon)
@@ -961,6 +965,8 @@ async function openPoint(pointOrId) {
 function submitQuickReport(point, isAdhoc, isBiting) {
   const targetPoint = isAdhoc ? saveAdhocPoint(point) : point;
   const statsBefore = getProfileStats();
+  const profile = Storage.getProfile();
+  const authorVisibility = profile.privacy.defaultReportAuthorVisibility;
 
   const report = {
     id: "r" + Date.now(),
@@ -974,7 +980,11 @@ function submitQuickReport(point, isAdhoc, isBiting) {
     comment: "",
     photo: null,
     rating: 0,
-    visibility: "public",
+    locationPrivacy: profile.privacy.defaultLocationPrivacy,
+    authorVisibility,
+    ...(authorVisibility === "named"
+      ? { authorName: profile.name, authorLevel: getLevelInfo(statsBefore.reportsCount).current.name, authorAvatar: profile.avatar || null }
+      : {}),
     quick: true,
   };
   Storage.addReport(report);
@@ -1260,20 +1270,22 @@ function renderSpeciesGrid(pool, dayWindows, waterTemp) {
   `;
 }
 
-function renderReportsList(reports) {
+function renderReportsList(reports, point) {
   if (!reports.length) {
     return `<div class="empty-state"><div class="icon">📝</div>Отчётов здесь пока нет. Оставьте первый — это минута, зато другим рыбакам будет полезно.</div>`;
   }
   return reports
-    .map((r) => {
+    .map((raw) => {
+      const r = normalizeReport(raw);
       const date = new Date(r.datetime);
       return `
       <div class="report-item">
+        ${renderReportAuthorLine(r)}
         <div class="report-item-head">
-          <span>${date.toLocaleDateString("ru-RU")} ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
+          <span>${locationLabel(r, point)} · ${date.toLocaleDateString("ru-RU")} ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
           <span class="${r.isBiting ? "report-biting-yes" : "report-biting-no"}">${r.isBiting ? "🟢 Клюёт" : "🔴 Не клюёт"}</span>
         </div>
-        ${r.species ? `<div style="font-weight:600;margin-top:4px;">${r.species}${r.amount ? " · " + r.amount : ""}</div>` : ""}
+        ${r.species ? `<div style="font-weight:600;margin-top:4px;">${escapeHtml(r.species)}${r.amount ? " · " + escapeHtml(r.amount) : ""}</div>` : ""}
         ${r.photo ? `<img class="report-photo" src="${r.photo}" />` : ""}
         ${r.comment ? `<div style="font-size:14px;margin-top:4px;">${escapeHtml(r.comment)}</div>` : ""}
         ${r.rating ? `<div style="color:var(--yellow);margin-top:4px;">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</div>` : ""}
@@ -1288,14 +1300,69 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Приводит отчёт (в т.ч. старый, сохранённый до появления авторства/приватности
+// места) к безопасному виду для отображения. Координат в модели отчёта никогда
+// не было — раскрывать в старых записях нечего сверх названия точки.
+const LEGACY_VISIBILITY_MAP = { public: "water", area: "district", private: "hidden" };
+function normalizeReport(r) {
+  const locationPrivacy = r.locationPrivacy || LEGACY_VISIBILITY_MAP[r.visibility] || "hidden";
+  const authorVisibility = r.authorVisibility || "anonymous";
+  return { ...r, locationPrivacy, authorVisibility };
+}
+
+function locationLabel(report, point) {
+  const p = point || getPointById(report.pointId);
+  switch (report.locationPrivacy) {
+    case "exact":
+      return p ? p.name : "Точка";
+    case "district":
+      return `Район: ${(p && (p.town || p.region)) || "не указан"}`;
+    case "water":
+      return `Водоём: ${p ? p.name : "не указан"}`;
+    default:
+      return "Место скрыто";
+  }
+}
+
+function renderReportAuthorLine(report) {
+  if (report.authorVisibility !== "named" || !report.authorName) {
+    return `<div class="report-author"><span class="ra-avatar">🎣</span><span class="ra-name">Анонимный рыбак</span></div>`;
+  }
+  const avatar = report.authorAvatar
+    ? `<img src="${report.authorAvatar}" class="ra-avatar-img" />`
+    : `<span class="ra-avatar">🎣</span>`;
+  return `
+    <div class="report-author" data-open-public-profile="1" style="cursor:pointer;">
+      ${avatar}
+      <span class="ra-name">${escapeHtml(report.authorName)}</span>
+      ${report.authorLevel ? `<span class="ra-level">${escapeHtml(report.authorLevel)}</span>` : ""}
+    </div>`;
+}
+
+function bindReportAuthorLinks(container) {
+  container.querySelectorAll("[data-open-public-profile]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openPublicProfile();
+    });
+  });
+}
+
 // ---------- ФОРМА ОТЧЁТА ----------
 
 function openReportForm(pointId) {
   const point = getPointById(pointId);
+  const profile = Storage.getProfile();
   document.getElementById("report-point-id").value = pointId;
   document.getElementById("report-form").reset();
-  state.reportSelection = { isBiting: true, rating: 0, photoDataUrl: null };
-  document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.biting === "true"));
+  state.reportSelection = {
+    isBiting: true,
+    rating: 0,
+    photoDataUrl: null,
+    authorVisibility: profile.privacy.defaultReportAuthorVisibility,
+  };
+  document.querySelectorAll("[data-biting]").forEach((b) => b.classList.toggle("active", b.dataset.biting === "true"));
+  document.querySelectorAll("[data-author]").forEach((b) => b.classList.toggle("active", b.dataset.author === state.reportSelection.authorVisibility));
   document.querySelectorAll("#report-stars span").forEach((s) => s.classList.remove("active"));
   document.getElementById("report-photo-preview").innerHTML = "";
   document.getElementById("photo-upload-label").classList.remove("has-photo");
@@ -1303,15 +1370,30 @@ function openReportForm(pointId) {
   document.getElementById("report-point-display").innerHTML = point
     ? `📍 ${point.name}${point.town ? ` <span class="card-sub" style="margin:0;">· ${point.town}</span>` : ""}`
     : "";
+  const locationSelect = document.getElementById("report-location-privacy");
+  locationSelect.value = profile.privacy.defaultLocationPrivacy;
+  document.getElementById("report-exact-warning").style.display = locationSelect.value === "exact" ? "block" : "none";
   showView("report");
 }
 
-document.querySelectorAll(".seg-btn").forEach((btn) => {
+document.querySelectorAll("[data-biting]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll("[data-biting]").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.reportSelection.isBiting = btn.dataset.biting === "true";
   });
+});
+
+document.querySelectorAll("[data-author]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-author]").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.reportSelection.authorVisibility = btn.dataset.author;
+  });
+});
+
+document.getElementById("report-location-privacy").addEventListener("change", (e) => {
+  document.getElementById("report-exact-warning").style.display = e.target.value === "exact" ? "block" : "none";
 });
 
 document.querySelectorAll("#report-stars span").forEach((star) => {
@@ -1341,6 +1423,8 @@ document.getElementById("report-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const pointId = document.getElementById("report-point-id").value;
   const statsBefore = getProfileStats();
+  const profile = Storage.getProfile();
+  const authorVisibility = state.reportSelection.authorVisibility || "anonymous";
 
   const report = {
     id: "r" + Date.now(),
@@ -1354,7 +1438,11 @@ document.getElementById("report-form").addEventListener("submit", (e) => {
     comment: document.getElementById("report-comment").value.trim(),
     photo: state.reportSelection.photoDataUrl,
     rating: state.reportSelection.rating,
-    visibility: document.getElementById("report-visibility").value,
+    locationPrivacy: document.getElementById("report-location-privacy").value,
+    authorVisibility,
+    ...(authorVisibility === "named"
+      ? { authorName: profile.name, authorLevel: getLevelInfo(statsBefore.reportsCount).current.name, authorAvatar: profile.avatar || null }
+      : {}),
   };
   Storage.addReport(report);
   invalidatePointCache(pointId);
@@ -1693,9 +1781,102 @@ async function openRegionDetail(regionName) {
     </div>
   `;
   bindOpenPointButtons(container);
+  bindReportAuthorLinks(container);
 }
 
 // ---------- ПРОФИЛЬ ----------
+
+// ---------- ПУБЛИЧНЫЙ ПРОФИЛЬ (предпросмотр) ----------
+// Приложение работает только в localStorage одного устройства — реальных
+// "других пользователей", которые могли бы открыть чей-то ещё профиль, нет.
+// Поэтому это честный предпросмотр СВОЕГО профиля таким, каким его увидели бы
+// другие, если бы для этого был сервер, а не имитация чужого профиля.
+
+function buildPublicProfile(profile) {
+  const p = profile.privacy;
+  const stats = getProfileStats();
+  const { current } = getLevelInfo(stats.reportsCount);
+  const allReports = Storage.getReports().map(normalizeReport);
+  const publicReports = p.showReports
+    ? allReports.filter((r) => r.locationPrivacy !== "hidden" && r.authorVisibility === "named").slice(0, 5)
+    : [];
+
+  return {
+    name: profile.name || "Рыбак",
+    avatarUrl: p.showAvatar ? profile.avatar : null,
+    level: current.name,
+    region: p.showRegion ? profile.region : "",
+    fishingExperience: p.showFishingExperience ? profile.fishingExperience : "",
+    favoriteFishingTypes: p.showFavoriteFishingTypes ? profile.favoriteFishingTypes || [] : [],
+    favoriteWaters: p.showFavoriteWaters ? profile.favoriteWaters || [] : [],
+    reportsCount: stats.reportsCount,
+    exploredWatersCount: stats.distinctPoints,
+    achievements: p.showAchievements ? computeAchievements(stats).filter((a) => a.earned) : [],
+    recentReports: publicReports,
+    maxSafeUrl: p.showMaxContact ? profile.contact.maxSafeUrl : "",
+  };
+}
+
+function openPublicProfile() {
+  showView("public-profile");
+  const container = document.getElementById("public-profile-content");
+  const profile = Storage.getProfile();
+
+  if (!profile.publicProfileEnabled) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🔒</div>
+        <div style="font-weight:700;font-size:16px;margin-bottom:4px;">Профиль закрыт</div>
+        Вы ещё не включили публичный профиль. Другие рыбаки видят только «Анонимный рыбак» в ваших отчётах.
+        <div style="margin-top:14px;">
+          <button class="btn-primary" id="pp-open-settings">Открыть настройки</button>
+        </div>
+      </div>`;
+    document.getElementById("pp-open-settings").addEventListener("click", () => {
+      state.viewStack = ["profile"];
+      showView("profile", { pushHistory: false });
+    });
+    return;
+  }
+
+  const pub = buildPublicProfile(profile);
+  container.innerHTML = `
+    <div class="card-sub" style="margin-bottom:8px;">Предпросмотр — так профиль увидят другие рыбаки</div>
+    <div class="card" style="text-align:center;">
+      ${pub.avatarUrl ? `<img src="${pub.avatarUrl}" class="avatar-img" style="width:72px;height:72px;border-radius:50%;" />` : `<span class="avatar-placeholder">🎣</span>`}
+      <div style="font-weight:700;font-size:18px;margin-top:8px;">${escapeHtml(pub.name)}</div>
+      <div class="card-sub">${escapeHtml(pub.level)}${pub.region ? " · " + escapeHtml(pub.region) : ""}</div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-tile"><div class="stat-value">${pub.reportsCount}</div><div class="stat-label">Отчётов</div></div>
+      <div class="stat-tile"><div class="stat-value">${pub.exploredWatersCount}</div><div class="stat-label">Водоёмов освоено</div></div>
+    </div>
+
+    <div class="section-header"><span class="icon">🎣</span><h3>О рыбаке</h3></div>
+    <div class="card">
+      ${pub.fishingExperience ? `<div class="card-row" style="margin-bottom:6px;"><span>Стаж</span><span>${escapeHtml(pub.fishingExperience)}</span></div>` : ""}
+      ${pub.favoriteFishingTypes.length ? `<div class="tags">${pub.favoriteFishingTypes.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+      ${pub.favoriteWaters.length ? `<div class="card-sub" style="margin-top:6px;">Любимые водоёмы: ${pub.favoriteWaters.map(escapeHtml).join(", ")}</div>` : ""}
+      ${!pub.fishingExperience && !pub.favoriteFishingTypes.length && !pub.favoriteWaters.length ? `<div class="card-sub" style="margin-bottom:0;">Рыбак пока не заполнил этот раздел.</div>` : ""}
+    </div>
+
+    ${pub.achievements.length ? `
+    <div class="section-header"><span class="icon">🏅</span><h3>Достижения</h3></div>
+    <div class="achv-grid">
+      ${pub.achievements.map((a) => `<div class="achv-card earned"><div class="achv-icon">${a.icon}</div><div class="achv-title">${a.title}</div></div>`).join("")}
+    </div>` : ""}
+
+    <div class="section-header"><span class="icon">📰</span><h3>Публичные отчёты</h3></div>
+    <div class="card">
+      ${pub.recentReports.length
+        ? renderReportsList(pub.recentReports)
+        : `<div class="empty-state" style="padding:12px 0;">Публичных отчётов пока нет.</div>`}
+    </div>
+
+    ${renderMaxLink(pub.maxSafeUrl, "Написать в MAX", escapeHtml)}
+  `;
+}
 
 function renderProfile() {
   const container = document.getElementById("profile-content");
@@ -1742,6 +1923,57 @@ function renderProfile() {
 
     <button class="btn-secondary btn-full" id="btn-profile-leaderboard">🏆 Рейтинг рыбаков</button>
 
+    <div class="section-header"><span class="icon">🌐</span><h3>Публичный профиль</h3></div>
+    <div class="card">
+      ${renderSwitchRow("public-enabled", "Показывать мой профиль другим", profile.publicProfileEnabled
+        ? "Другие рыбаки видят открытые данные и публичные отчёты."
+        : "Профиль закрыт. Отчёты можно оставлять анонимно.", profile.publicProfileEnabled)}
+      <button class="btn-secondary btn-full" id="btn-preview-profile" style="margin-top:12px;">👁️ Предпросмотр профиля</button>
+    </div>
+
+    <div class="section-header"><span class="icon">🔎</span><h3>Что показывать</h3></div>
+    <div class="card">
+      ${renderSwitchRow("show-avatar", "Аватар", "", profile.privacy.showAvatar)}
+      ${renderSwitchRow("show-region", "Регион", "", profile.privacy.showRegion)}
+      ${renderSwitchRow("show-fishingExperience", "Стаж", "", profile.privacy.showFishingExperience)}
+      ${renderSwitchRow("show-favoriteFishingTypes", "Любимые виды ловли", "", profile.privacy.showFavoriteFishingTypes)}
+      ${renderSwitchRow("show-favoriteWaters", "Любимые водоёмы", "Показывайте только если готовы делиться этой информацией.", profile.privacy.showFavoriteWaters)}
+      ${renderSwitchRow("show-achievements", "Достижения", "", profile.privacy.showAchievements)}
+      ${renderSwitchRow("show-reports", "Публичные отчёты", "", profile.privacy.showReports)}
+    </div>
+
+    <div class="card">
+      <label class="field-label">Регион</label>
+      <input type="text" id="profile-region" value="${escapeHtml(profile.region || "")}" placeholder="Например: Московская область" />
+      <label class="field-label">Стаж рыбалки</label>
+      <input type="text" id="profile-experience" value="${escapeHtml(profile.fishingExperience || "")}" placeholder="Например: 5 лет" />
+    </div>
+
+    <div class="section-header"><span class="icon">💬</span><h3>MAX-контакт</h3></div>
+    <div class="card">
+      ${renderSwitchRow("show-maxContact", "Показывать кнопку «Написать в MAX»", "Включайте только если готовы получать сообщения.", profile.privacy.showMaxContact)}
+      <label class="field-label">MAX username или ссылка</label>
+      <input type="text" id="profile-max" value="${escapeHtml(profile.contact.maxRaw || "")}" placeholder="username или https://..." />
+      <div id="max-field-feedback"></div>
+      <div class="privacy-notice">Контакт увидят только те, кому вы разрешите его показывать.</div>
+    </div>
+
+    <div class="section-header"><span class="icon">📝</span><h3>Приватность отчётов по умолчанию</h3></div>
+    <div class="card">
+      <label class="field-label">Автор</label>
+      <select id="profile-default-author">
+        <option value="anonymous" ${profile.privacy.defaultReportAuthorVisibility === "anonymous" ? "selected" : ""}>Анонимно</option>
+        <option value="named" ${profile.privacy.defaultReportAuthorVisibility === "named" ? "selected" : ""}>От имени профиля</option>
+      </select>
+      <label class="field-label">Место</label>
+      <select id="profile-default-location">
+        <option value="exact" ${profile.privacy.defaultLocationPrivacy === "exact" ? "selected" : ""}>Точная точка</option>
+        <option value="district" ${profile.privacy.defaultLocationPrivacy === "district" ? "selected" : ""}>Только район</option>
+        <option value="water" ${profile.privacy.defaultLocationPrivacy === "water" ? "selected" : ""}>Только водоём</option>
+        <option value="hidden" ${profile.privacy.defaultLocationPrivacy === "hidden" ? "selected" : ""}>Скрыть место</option>
+      </select>
+    </div>
+
     <div class="section-header"><span class="icon">🏅</span><h3>Достижения (${earnedCount}/${achievements.length})</h3></div>
     <div class="achv-grid">
       ${achievements
@@ -1763,6 +1995,13 @@ function renderProfile() {
       </div>
     </div>
 
+    <div class="section-header"><span class="icon">🗂️</span><h3>Управление данными</h3></div>
+    <div class="card-row" style="gap:8px;flex-wrap:wrap;">
+      <button class="btn-secondary" id="btn-clear-max" style="flex:1;">Очистить MAX</button>
+      <button class="btn-secondary" id="btn-remove-avatar" style="flex:1;">Удалить аватар</button>
+    </div>
+    <button class="btn-secondary btn-full" id="btn-anonymize-reports" style="margin-top:8px;">Сделать все отчёты анонимными</button>
+
     <div class="empty-state" style="font-size:12px;">Данные хранятся только в этом браузере. Без регистрации и сервера.</div>
   `;
   document.getElementById("profile-name").addEventListener("change", (e) => {
@@ -1779,6 +2018,83 @@ function renderProfile() {
     reader.readAsDataURL(file);
   });
   document.getElementById("btn-profile-leaderboard").addEventListener("click", () => openLeaderboard());
+  document.getElementById("btn-preview-profile").addEventListener("click", () => openPublicProfile());
+
+  document.getElementById("public-enabled").addEventListener("change", (e) => {
+    if (e.target.checked) {
+      const ok = confirm(
+        "Другие рыбаки смогут видеть ваше имя, уровень и публичные отчёты. Контакты и точные места останутся скрыты, пока вы сами их не откроете."
+      );
+      if (!ok) {
+        e.target.checked = false;
+        return;
+      }
+    }
+    Storage.updateProfile({ publicProfileEnabled: e.target.checked });
+    renderProfile();
+  });
+
+  ["avatar", "region", "fishingExperience", "favoriteFishingTypes", "favoriteWaters", "achievements", "reports", "maxContact"].forEach((key) => {
+    const el = document.getElementById(`show-${key}`);
+    if (!el) return;
+    el.addEventListener("change", (e) => {
+      const privacy = { ...Storage.getProfile().privacy, [`show${key.charAt(0).toUpperCase()}${key.slice(1)}`]: e.target.checked };
+      Storage.updateProfile({ privacy });
+    });
+  });
+
+  document.getElementById("profile-region").addEventListener("change", (e) => {
+    Storage.updateProfile({ region: e.target.value.trim() });
+  });
+  document.getElementById("profile-experience").addEventListener("change", (e) => {
+    Storage.updateProfile({ fishingExperience: e.target.value.trim() });
+  });
+
+  const maxFeedback = document.getElementById("max-field-feedback");
+  document.getElementById("profile-max").addEventListener("change", (e) => {
+    const { safeUrl, error } = normalizeMaxContact(e.target.value);
+    if (error) {
+      maxFeedback.innerHTML = `<div class="max-field-error">${escapeHtml(error)}</div>`;
+      Storage.updateProfile({ contact: { ...Storage.getProfile().contact, maxRaw: e.target.value, maxSafeUrl: "" } });
+      return;
+    }
+    maxFeedback.innerHTML = safeUrl ? `<div class="max-field-ok">MAX-контакт сохранён.</div>` : "";
+    Storage.updateProfile({ contact: { maxRaw: e.target.value, maxSafeUrl: safeUrl } });
+  });
+
+  document.getElementById("profile-default-author").addEventListener("change", (e) => {
+    Storage.updateProfile({ privacy: { ...Storage.getProfile().privacy, defaultReportAuthorVisibility: e.target.value } });
+  });
+  document.getElementById("profile-default-location").addEventListener("change", (e) => {
+    Storage.updateProfile({ privacy: { ...Storage.getProfile().privacy, defaultLocationPrivacy: e.target.value } });
+  });
+
+  document.getElementById("btn-clear-max").addEventListener("click", () => {
+    Storage.updateProfile({ contact: { maxRaw: "", maxSafeUrl: "" }, privacy: { ...Storage.getProfile().privacy, showMaxContact: false } });
+    showToast("MAX-контакт очищен");
+    renderProfile();
+  });
+  document.getElementById("btn-remove-avatar").addEventListener("click", () => {
+    Storage.updateProfile({ avatar: null });
+    renderProfile();
+  });
+  document.getElementById("btn-anonymize-reports").addEventListener("click", () => {
+    if (!confirm("Убрать имя со всех ваших отчётов? Дальше они будут показаны как «Анонимный рыбак».")) return;
+    Storage.anonymizeAllReports();
+    showToast("Все отчёты теперь анонимны");
+  });
+}
+
+function renderSwitchRow(id, title, hint, checked) {
+  return `
+    <label class="switch-row" for="${id}">
+      <span>
+        <span class="switch-row-title">${title}</span>
+        ${hint ? `<span class="switch-row-hint">${hint}</span>` : ""}
+      </span>
+      <input type="checkbox" class="switch-input" id="${id}" ${checked ? "checked" : ""} />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </label>`;
 }
 
 // ---------- СТАРТ ----------

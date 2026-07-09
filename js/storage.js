@@ -61,14 +61,53 @@ export const Storage = {
   },
 
   getProfile() {
-    return read(KEYS.profile, {
+    const saved = read(KEYS.profile, null);
+    const defaults = {
       name: "Рыбак",
       createdAt: new Date().toISOString(),
-    });
+      region: "",
+      fishingExperience: "",
+      favoriteFishingTypes: [],
+      favoriteWaters: [],
+      publicProfileEnabled: false,
+      privacy: {
+        showAvatar: true,
+        showRegion: false,
+        showFishingExperience: false,
+        showFavoriteFishingTypes: false,
+        showFavoriteWaters: false,
+        showAchievements: true,
+        showReports: true,
+        showMaxContact: false,
+        defaultReportAuthorVisibility: "anonymous",
+        defaultLocationPrivacy: "water",
+      },
+      contact: { maxRaw: "", maxSafeUrl: "" },
+    };
+    if (!saved) return defaults;
+    // Глубокий мердж — у профилей, сохранённых до этой версии, нет вложенных
+    // privacy/contact, поверхностный спред оставил бы их undefined.
+    return {
+      ...defaults,
+      ...saved,
+      privacy: { ...defaults.privacy, ...(saved.privacy || {}) },
+      contact: { ...defaults.contact, ...(saved.contact || {}) },
+    };
   },
   updateProfile(patch) {
     const profile = { ...Storage.getProfile(), ...patch };
     write(KEYS.profile, profile);
     return profile;
+  },
+
+  // Массово снимает авторство со всех отчётов — используется только по явной
+  // кнопке пользователя "Сделать все отчёты анонимными" в профиле.
+  anonymizeAllReports() {
+    const reports = read(KEYS.reports, []).map((r) => {
+      const { authorName, authorLevel, authorAvatar, ...rest } = r;
+      return { ...rest, authorVisibility: "anonymous" };
+    });
+    write(KEYS.reports, reports);
+    return reports;
   },
 };
