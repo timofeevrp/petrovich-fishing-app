@@ -14,7 +14,7 @@ import { getMockLeaderboard, getMonthTheme, MONTHLY_PRIZE } from "./leaderboard.
 import { fetchKpIndex, kpLabel } from "./geomagnetic.js";
 import { ARTICLES, getArticleById, estimateReadMinutes } from "./articles.js";
 import { getGearTips } from "./gear.js";
-import { normalizeMaxContact, renderMaxLink } from "./maxlink.js";
+import { normalizeMaxContact, renderMaxContact } from "./maxlink.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
 
@@ -1890,7 +1890,8 @@ function buildPublicProfile(profile) {
     exploredWatersCount: stats.distinctPoints,
     achievements: p.showAchievements ? computeAchievements(stats).filter((a) => a.earned) : [],
     recentReports: publicReports,
-    maxSafeUrl: p.showMaxContact ? profile.contact.maxSafeUrl : "",
+    maxPhoneDigits: p.showMaxContact ? profile.contact.maxPhoneDigits : "",
+    maxPhoneDisplay: p.showMaxContact ? profile.contact.maxPhoneDisplay : "",
   };
 }
 
@@ -1951,7 +1952,7 @@ function openPublicProfile() {
         : `<div class="empty-state" style="padding:12px 0;">Публичных отчётов пока нет.</div>`}
     </div>
 
-    ${renderMaxLink(pub.maxSafeUrl, "Написать в MAX", escapeHtml)}
+    ${renderMaxContact(pub.maxPhoneDigits, pub.maxPhoneDisplay, escapeHtml)}
   `;
 }
 
@@ -2035,9 +2036,9 @@ function renderProfile() {
 
     <div class="section-header"><span class="icon">💬</span><h3>MAX-контакт</h3></div>
     <div class="card">
-      ${renderSwitchRow("show-maxContact", "Показывать кнопку «Написать в MAX»", "Включайте только если готовы получать сообщения.", profile.privacy.showMaxContact)}
-      <label class="field-label">MAX username или ссылка</label>
-      <input type="text" id="profile-max" value="${escapeHtml(profile.contact.maxRaw || "")}" placeholder="username или https://..." />
+      ${renderSwitchRow("show-maxContact", "Показывать номер для MAX", "Включайте только если готовы получать сообщения и звонки.", profile.privacy.showMaxContact)}
+      <label class="field-label">Номер телефона для MAX</label>
+      <input type="tel" id="profile-max" value="${escapeHtml(profile.contact.maxRaw || "")}" placeholder="+7 999 123-45-67" />
       <div id="max-field-feedback"></div>
       <div class="privacy-notice">Контакт увидят только те, кому вы разрешите его показывать.</div>
     </div>
@@ -2139,16 +2140,16 @@ function renderProfile() {
 
   const maxFeedback = document.getElementById("max-field-feedback");
   document.getElementById("profile-max").addEventListener("change", (e) => {
-    const { safeUrl, error } = normalizeMaxContact(e.target.value);
+    const { phoneDigits, display, error } = normalizeMaxContact(e.target.value);
     if (error) {
       maxFeedback.innerHTML = `<div class="max-field-error">${escapeHtml(error)}</div>`;
-      Storage.updateProfile({ contact: { ...Storage.getProfile().contact, maxRaw: e.target.value, maxSafeUrl: "" } });
+      Storage.updateProfile({ contact: { ...Storage.getProfile().contact, maxRaw: e.target.value, maxPhoneDigits: "", maxPhoneDisplay: "" } });
       return;
     }
-    maxFeedback.innerHTML = safeUrl
-      ? `<div class="max-field-warn">Сохранено. Рыбаки смогут написать вам в MAX, как только вы включите показ контакта выше.</div>`
+    maxFeedback.innerHTML = phoneDigits
+      ? `<div class="max-field-warn">Сохранено. Рыбаки смогут написать или позвонить вам в MAX, как только вы включите показ номера выше.</div>`
       : "";
-    Storage.updateProfile({ contact: { maxRaw: e.target.value, maxSafeUrl: safeUrl } });
+    Storage.updateProfile({ contact: { maxRaw: e.target.value, maxPhoneDigits: phoneDigits, maxPhoneDisplay: display } });
   });
 
   document.getElementById("profile-default-author").addEventListener("change", (e) => {
@@ -2159,7 +2160,7 @@ function renderProfile() {
   });
 
   document.getElementById("btn-clear-max").addEventListener("click", () => {
-    Storage.updateProfile({ contact: { maxRaw: "", maxSafeUrl: "" }, privacy: { ...Storage.getProfile().privacy, showMaxContact: false } });
+    Storage.updateProfile({ contact: { maxRaw: "", maxPhoneDigits: "", maxPhoneDisplay: "" }, privacy: { ...Storage.getProfile().privacy, showMaxContact: false } });
     showToast("MAX-контакт очищен");
     renderProfile();
   });

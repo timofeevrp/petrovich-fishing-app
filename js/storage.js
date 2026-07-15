@@ -83,7 +83,7 @@ export const Storage = {
         defaultReportAuthorVisibility: "anonymous",
         defaultLocationPrivacy: "water",
       },
-      contact: { maxRaw: "", maxSafeUrl: "" },
+      contact: { maxRaw: "", maxPhoneDigits: "", maxPhoneDisplay: "" },
     };
     if (!saved) return defaults;
     // Глубокий мердж — у профилей, сохранённых до этой версии, нет вложенных
