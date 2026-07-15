@@ -339,14 +339,12 @@ async function loadHome({ skipGeo = false } = {}) {
     </div>
 
     <div class="hub-grid">
-      <div class="hub-card" data-hub="forecast">
-        <div class="hub-icon">📊</div>
-        <div class="hub-label">Прогноз</div>
+      <div class="hub-card hub-card-banner" data-hub="forecast">
+        <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
         <div class="hub-sub">Шансы, часы и причины</div>
       </div>
-      <div class="hub-card" data-hub="reports">
-        <div class="hub-icon">📍</div>
-        <div class="hub-label">Отчёты</div>
+      <div class="hub-card hub-card-banner" data-hub="reports">
+        <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
         <div class="hub-sub">Что ловят рядом</div>
       </div>
     </div>
