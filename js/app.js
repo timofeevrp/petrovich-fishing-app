@@ -571,14 +571,18 @@ function initMapIfNeeded() {
   // флаг Украины в SVG, встроенный в саму библиотеку, никак не связан с тайлами карты).
   L.control.attribution({ prefix: "Leaflet" }).addTo(state.map);
 
-  // Схема — CARTO Voyager (чище и современнее дефолтных тайлов OSM, без подписей-флагов
-  // стран на границах, которые многим бросались в глаза). Спутник — Esri World Imagery,
-  // удобно смотреть форму берега и растительность вокруг водоёма. Рельеф — OpenTopoMap,
-  // горизонтали высот, чётче видна форма берегов на природе.
-  const schemeLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution: "© OpenStreetMap, © CARTO",
+  // Схема — стандартные тайлы OpenStreetMap. Раньше тут стоял CARTO Voyager
+  // (визуально мягче), но у него подписи городов по умолчанию латиницей
+  // ("Pushkino" вместо "Пушкино") — для русскоязычного приложения это плохо
+  // читается. У обычных тайлов OSM подписи на локальном языке (кириллица).
+  // "Флаг Украины", который раньше путали с этим слоем — на самом деле
+  // из атрибуции самого Leaflet (см. ниже), тайлов это не касается.
+  // Спутник — Esri World Imagery, удобно смотреть форму берега и
+  // растительность вокруг водоёма. Рельеф — OpenTopoMap, горизонтали высот.
+  const schemeLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap",
     maxZoom: 19,
-    subdomains: "abcd",
+    subdomains: "abc",
   }).addTo(state.map);
   const satelliteLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
