@@ -182,7 +182,7 @@ main#views {
   margin-bottom: 16px;
 }
 .score-circle {
-  width: 76px; height: 76px;
+  width: 92px; height: 92px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -193,8 +193,8 @@ main#views {
   flex-shrink: 0;
 }
 .score-circle.sc-4 { box-shadow: 0 0 0 4px var(--yellow-100); }
-.score-circle .num { font-size: 24px; line-height: 1; }
-.score-circle .max { font-size: 10px; opacity: 0.8; }
+.score-circle .num { font-size: 30px; line-height: 1; }
+.score-circle .max { font-size: 11px; opacity: 0.8; }
 
 .score-label { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
 .score-weather-icon { font-size: 17px; }
@@ -455,6 +455,28 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
 }
 .ps-actions { display: flex; gap: 8px; margin-top: 12px; }
 .ps-actions button { flex: 1; padding: 9px 4px; font-size: 12px; }
+
+.card-cta-row { display: flex; gap: 8px; margin-top: 14px; }
+.card-cta-row button { flex: 1; }
+
+/* REPORT FORM: свёрнутые по умолчанию необязательные поля */
+.details-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--green-700);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 14px 4px 4px;
+  cursor: pointer;
+}
+.details-toggle-arrow { transition: transform var(--transition-fast); }
+.details-toggle.open .details-toggle-arrow { transform: rotate(180deg); }
+.report-details { margin-top: 8px; }
 
 .leaflet-div-icon.marker-score {
   background: none;

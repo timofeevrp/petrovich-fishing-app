@@ -313,8 +313,8 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="ln-row">
           <span class="ln-icon">🧭</span>
           <div>
-            <div class="ln-title">Геолокация выключена</div>
-            <div class="ln-text">Показываю проверенные места рядом с Москвой. Можно выбрать точку на карте вручную.</div>
+            <div class="ln-title">Показываю клёв рядом с Москвой</div>
+            <div class="ln-text">Включите геолокацию — покажу места рядом с вами. Или выберите точку на карте вручную.</div>
           </div>
         </div>
         <div class="ln-actions">
@@ -344,16 +344,6 @@ async function loadHome({ skipGeo = false } = {}) {
   const { current: level, next: nextLevel, progress: levelProgress } = getLevelInfo(profileStats.reportsCount);
 
   const html = `
-    <div class="mini-profile-card" id="mini-profile-card">
-      <span class="level-icon">${level.icon}</span>
-      <div style="flex:1;">
-        <div class="mp-name">${profile.name || "Рыбак"}</div>
-        <div class="mp-level">${level.name}${nextLevel ? ` · до «${nextLevel.name}»: ${profileStats.reportsCount}/${nextLevel.threshold}` : " · максимальный уровень"}</div>
-        ${nextLevel ? `<div class="level-bar"><div class="level-bar-fill" style="width:${levelProgress}%;"></div></div>` : ""}
-      </div>
-      <span class="mp-arrow">›</span>
-    </div>
-
     <div class="hub-grid">
       <div class="hub-card hub-card-banner" data-hub="forecast">
         <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
@@ -364,8 +354,6 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="hub-sub">Что ловят рядом</div>
       </div>
     </div>
-
-    ${geoNotice}
 
     <div class="card" id="home-forecast-anchor">
       <div class="card-sub">${getGreeting()}. Прогноз на сегодня: ${hero.point.name}</div>
@@ -383,11 +371,27 @@ async function loadHome({ skipGeo = false } = {}) {
           )
           .join("")}
       </div>
+      <div class="card-cta-row">
+        <button class="btn-primary" id="hero-route-btn">Маршрут</button>
+        <button class="btn-secondary" id="hero-details-btn">Подробный прогноз</button>
+      </div>
     </div>
 
     <div class="quick-actions">
       <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
       <div class="quick-action" data-action="gear"><span class="qa-icon">🎒</span>Что взять</div>
+    </div>
+
+    ${geoNotice}
+
+    <div class="mini-profile-card" id="mini-profile-card">
+      <span class="level-icon">${level.icon}</span>
+      <div style="flex:1;">
+        <div class="mp-name">${profile.name || "Рыбак"}</div>
+        <div class="mp-level">${level.name}${nextLevel ? ` · до «${nextLevel.name}»: ${profileStats.reportsCount}/${nextLevel.threshold}` : " · максимальный уровень"}</div>
+        ${nextLevel ? `<div class="level-bar"><div class="level-bar-fill" style="width:${levelProgress}%;"></div></div>` : ""}
+      </div>
+      <span class="mp-arrow">›</span>
     </div>
 
     ${warnings.length ? `
@@ -420,6 +424,11 @@ async function loadHome({ skipGeo = false } = {}) {
     openReportForm(hero.point.id);
   });
   contentEl.querySelector('[data-action="gear"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
+
+  document.getElementById("hero-route-btn").addEventListener("click", () => {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
+  });
+  document.getElementById("hero-details-btn").addEventListener("click", () => openPoint(hero.point.id));
 
   const geoAllowBtn = document.getElementById("btn-geo-allow");
   if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
@@ -459,7 +468,7 @@ function renderPlaceRecommendationCard({ point, forecast, distanceKm, windows })
 }
 
 function renderConfidenceBadge(result) {
-  const labels = { high: "Высокая точность", medium: "Средняя точность", low: "Базовый прогноз" };
+  const labels = { high: "Высокая точность", medium: "Средняя точность", low: "По погоде и луне" };
   return `<div class="confidence-badge confidence-${result.confidence}" title="${result.confidenceText}">🎯 ${labels[result.confidence]}</div>`;
 }
 
@@ -526,7 +535,7 @@ function renderScoreWidget(result, interp, icon) {
     <div class="score-factors">
       ${result.topFactors.map((f) => `<span class="factor-chip">${f}</span>`).join("")}
     </div>
-    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Свежих отчётов пока нет, прогноз строится на погоде и луне. Оставьте первый, и он станет точнее для всех рыбаков рядом.</div>` : ""}
+    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Отчётов пока нет — оставьте первый, и прогноз станет точнее.</div>` : ""}
   `;
 }
 
@@ -1435,20 +1444,29 @@ function bindReportAuthorLinks(container) {
 
 // ---------- ФОРМА ОТЧЁТА ----------
 
+function setReportDetailsOpen(open) {
+  document.getElementById("report-details").classList.toggle("hidden", !open);
+  document.getElementById("report-details-toggle").classList.toggle("open", open);
+  document.getElementById("report-details-toggle-label").textContent = open
+    ? "Скрыть детали"
+    : "Добавить детали (фото, вид рыбы, снасти)";
+}
+
 function openReportForm(pointId) {
   const point = getPointById(pointId);
   const profile = Storage.getProfile();
   document.getElementById("report-point-id").value = pointId;
   document.getElementById("report-form").reset();
+  const draft = Storage.getReportDraft(pointId);
   state.reportSelection = {
-    isBiting: true,
-    rating: 0,
+    isBiting: draft ? draft.isBiting : true,
+    rating: draft ? draft.rating : 0,
     photoDataUrl: null,
-    authorVisibility: profile.privacy.defaultReportAuthorVisibility,
+    authorVisibility: draft ? draft.authorVisibility : profile.privacy.defaultReportAuthorVisibility,
   };
-  document.querySelectorAll("[data-biting]").forEach((b) => b.classList.toggle("active", b.dataset.biting === "true"));
+  document.querySelectorAll("[data-biting]").forEach((b) => b.classList.toggle("active", b.dataset.biting === String(state.reportSelection.isBiting)));
   document.querySelectorAll("[data-author]").forEach((b) => b.classList.toggle("active", b.dataset.author === state.reportSelection.authorVisibility));
-  document.querySelectorAll("#report-stars span").forEach((s) => s.classList.remove("active"));
+  document.querySelectorAll("#report-stars span").forEach((s) => s.classList.toggle("active", Number(s.dataset.star) <= state.reportSelection.rating));
   document.getElementById("report-photo-preview").innerHTML = "";
   document.getElementById("photo-upload-label").classList.remove("has-photo");
   document.getElementById("photo-upload-text").textContent = "Нажмите, чтобы сделать фото или выбрать из галереи";
@@ -1456,16 +1474,58 @@ function openReportForm(pointId) {
     ? `📍 ${point.name}${point.town ? ` <span class="card-sub" style="margin:0;">· ${point.town}</span>` : ""}`
     : "";
   const locationSelect = document.getElementById("report-location-privacy");
-  locationSelect.value = profile.privacy.defaultLocationPrivacy;
+  locationSelect.value = draft ? draft.locationPrivacy : profile.privacy.defaultLocationPrivacy;
   document.getElementById("report-exact-warning").style.display = locationSelect.value === "exact" ? "block" : "none";
+
+  if (draft) {
+    document.getElementById("report-species").value = draft.species || "";
+    document.getElementById("report-amount").value = draft.amount || "";
+    document.getElementById("report-tackle").value = draft.tackle || "";
+    document.getElementById("report-bait").value = draft.bait || "";
+    document.getElementById("report-comment").value = draft.comment || "";
+    setReportDetailsOpen(draft.detailsOpen);
+    showToast("Черновик отчёта восстановлен");
+  } else {
+    setReportDetailsOpen(false);
+  }
+
   showView("report");
 }
+
+function saveReportDraftNow() {
+  const pointId = document.getElementById("report-point-id").value;
+  if (!pointId) return;
+  Storage.saveReportDraft({
+    pointId,
+    isBiting: state.reportSelection.isBiting,
+    rating: state.reportSelection.rating,
+    authorVisibility: state.reportSelection.authorVisibility,
+    locationPrivacy: document.getElementById("report-location-privacy").value,
+    species: document.getElementById("report-species").value.trim(),
+    amount: document.getElementById("report-amount").value.trim(),
+    tackle: document.getElementById("report-tackle").value.trim(),
+    bait: document.getElementById("report-bait").value.trim(),
+    comment: document.getElementById("report-comment").value.trim(),
+    detailsOpen: !document.getElementById("report-details").classList.contains("hidden"),
+  });
+}
+
+document.getElementById("report-details-toggle").addEventListener("click", () => {
+  const isOpen = !document.getElementById("report-details").classList.contains("hidden");
+  setReportDetailsOpen(!isOpen);
+});
+
+document.querySelectorAll("#report-details input, #report-details textarea").forEach((el) => {
+  el.addEventListener("input", saveReportDraftNow);
+});
+document.getElementById("report-location-privacy").addEventListener("change", saveReportDraftNow);
 
 document.querySelectorAll("[data-biting]").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll("[data-biting]").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.reportSelection.isBiting = btn.dataset.biting === "true";
+    saveReportDraftNow();
   });
 });
 
@@ -1474,6 +1534,7 @@ document.querySelectorAll("[data-author]").forEach((btn) => {
     document.querySelectorAll("[data-author]").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.reportSelection.authorVisibility = btn.dataset.author;
+    saveReportDraftNow();
   });
 });
 
@@ -1488,6 +1549,7 @@ document.querySelectorAll("#report-stars span").forEach((star) => {
     document.querySelectorAll("#report-stars span").forEach((s) => {
       s.classList.toggle("active", Number(s.dataset.star) <= val);
     });
+    saveReportDraftNow();
   });
 });
 
@@ -1530,6 +1592,7 @@ document.getElementById("report-form").addEventListener("submit", (e) => {
       : {}),
   };
   Storage.addReport(report);
+  Storage.clearReportDraft();
   invalidatePointCache(pointId);
 
   const statsAfter = getProfileStats();

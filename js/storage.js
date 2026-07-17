@@ -6,6 +6,7 @@ const KEYS = {
   reports: "petrovich_reports",
   favorites: "petrovich_favorites",
   profile: "petrovich_profile",
+  reportDraft: "petrovich_report_draft",
 };
 
 function read(key, fallback) {
@@ -41,6 +42,20 @@ export const Storage = {
     reports.unshift(report);
     write(KEYS.reports, reports);
     return report;
+  },
+
+  // Черновик формы отчёта — чтобы случайный уход с экрана (свернул детали,
+  // отвлёкся) не стирал уже введённое. Один черновик на точку, перетирается
+  // при каждом изменении и удаляется после успешной публикации.
+  getReportDraft(pointId) {
+    const draft = read(KEYS.reportDraft, null);
+    return draft && draft.pointId === pointId ? draft : null;
+  },
+  saveReportDraft(draft) {
+    write(KEYS.reportDraft, draft);
+  },
+  clearReportDraft() {
+    localStorage.removeItem(KEYS.reportDraft);
   },
 
   getFavorites() {
