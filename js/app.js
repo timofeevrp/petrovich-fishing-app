@@ -370,13 +370,8 @@ async function loadHome({ skipGeo = false } = {}) {
     <div class="card" id="home-forecast-anchor">
       <div class="card-sub">${getGreeting()}. Прогноз на сегодня: ${hero.point.name}</div>
       ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
-      <div class="best-window-line">⏰ Лучшее окно: ${dayWindows.best.label.toLowerCase()}, ${dayWindows.best.result.score} из 100</div>
       ${renderConfidenceBadge(heroResult)}
-    </div>
-
-    <div class="section-header"><span class="icon">⏰</span><h3>Лучшее окно сегодня</h3></div>
-    <div class="card">
-      <div class="window-row">
+      <div class="window-row" style="margin-top:12px;">
         ${dayWindows.windows
           .map(
             (w) => `
@@ -390,11 +385,8 @@ async function loadHome({ skipGeo = false } = {}) {
       </div>
     </div>
 
-    <div class="section-header"><span class="icon">⚡</span><h3>Быстрые действия</h3></div>
     <div class="quick-actions">
       <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
-      <div class="quick-action" data-action="relocate"><span class="qa-icon">📍</span>Обновить локацию</div>
-      <div class="quick-action" data-action="map"><span class="qa-icon">🗺️</span>Открыть карту</div>
       <div class="quick-action" data-action="gear"><span class="qa-icon">🎒</span>Что взять</div>
     </div>
 
@@ -427,11 +419,6 @@ async function loadHome({ skipGeo = false } = {}) {
     state.viewStack = ["point", "report"];
     openReportForm(hero.point.id);
   });
-  contentEl.querySelector('[data-action="relocate"]').addEventListener("click", async () => {
-    showToast("Обновляю геолокацию...");
-    await loadHome();
-  });
-  contentEl.querySelector('[data-action="map"]').addEventListener("click", () => showView("map"));
   contentEl.querySelector('[data-action="gear"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   const geoAllowBtn = document.getElementById("btn-geo-allow");

@@ -43,6 +43,13 @@
 
 * { box-sizing: border-box; }
 
+/* Без этого на iOS Safari при резком скролле/rubber-band-оверскролле
+   sticky-шапка и нижний таббар на долю секунды съезжают со своего места,
+   обнажая фон под ними — выглядит как "плашка дёргается". */
+html {
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -53,6 +60,7 @@ body {
   line-height: 1.4;
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
 }
 
 #app {
@@ -793,24 +801,24 @@ textarea { resize: vertical; }
 /* QUICK ACTIONS */
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin-bottom: 4px;
 }
 .quick-action {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: var(--surface);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius);
-  padding: 12px 4px;
+  padding: 12px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  text-align: center;
+  text-align: left;
 }
 .quick-action { transition: background var(--transition-fast), transform var(--transition-fast); }
 .quick-action:active { background: var(--yellow-100); transform: scale(0.97); }
@@ -818,6 +826,7 @@ textarea { resize: vertical; }
   font-size: 20px;
   width: 40px;
   height: 40px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--green-100);
   display: flex;
