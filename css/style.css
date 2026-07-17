@@ -82,7 +82,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px 8px;
+  padding: 14px 16px;
 }
 .brand-name {
   font-weight: 800;
@@ -99,29 +99,36 @@ body {
   flex-shrink: 0;
 }
 
-.tabbar-top {
+/* BOTTOM NAV */
+.tabbar-bottom {
   display: flex;
-  padding: 0 8px;
-  gap: 4px;
+  position: sticky;
+  bottom: 0;
+  z-index: 1000;
+  background: var(--header-bg);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
 .tab-btn {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
   background: none;
   border: none;
-  color: rgba(255,255,255,0.75);
-  padding: 10px 4px 12px;
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 2px;
+  font-size: 11px;
   font-weight: 600;
-  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
-.tab-btn.active {
-  color: var(--white);
-  border-bottom-color: var(--yellow-400);
-}
-.tab-btn:active { opacity: 0.8; }
-.tab-icon { font-size: 14px; margin-right: 2px; }
+.tab-btn.active { color: var(--yellow-400); }
+.tab-btn:active { background: rgba(255, 255, 255, 0.06); }
+.tab-icon { font-size: 21px; line-height: 1; }
+.tab-label { font-size: 11px; }
 
 main#views {
   flex: 1;
@@ -137,7 +144,7 @@ main#views {
 }
 
 #view-map { padding: 0; display: none; }
-#view-map.active { display: flex; flex-direction: column; height: calc(100vh - 96px); position: relative; }
+#view-map.active { display: flex; flex-direction: column; height: calc(100vh - 142px - env(safe-area-inset-bottom)); position: relative; margin-bottom: -24px; }
 
 /* STATE BLOCKS */
 .state-block {
