@@ -7,7 +7,13 @@ const KEYS = {
   favorites: "petrovich_favorites",
   profile: "petrovich_profile",
   reportDraft: "petrovich_report_draft",
+  events: "petrovich_events",
 };
+
+// Верхняя граница локального лога событий — нет бэкенда, некуда слать
+// аналитику, но хотя бы можно посмотреть свою воронку через DevTools
+// (localStorage.petrovich_events) до появления настоящей аналитики.
+const MAX_EVENTS = 500;
 
 function read(key, fallback) {
   try {
@@ -56,6 +62,15 @@ export const Storage = {
   },
   clearReportDraft() {
     localStorage.removeItem(KEYS.reportDraft);
+  },
+
+  trackEvent(name, props = {}) {
+    const events = read(KEYS.events, []);
+    events.push({ name, props, ts: new Date().toISOString() });
+    write(KEYS.events, events.slice(-MAX_EVENTS));
+  },
+  getEventLog() {
+    return read(KEYS.events, []);
   },
 
   getFavorites() {

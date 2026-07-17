@@ -213,17 +213,20 @@ function showOnboardingIfNeeded() {
     enterApp();
     loadHome();
   } else {
+    Storage.trackEvent("onboarding_shown");
     document.getElementById("view-onboarding").classList.remove("hidden");
     document.getElementById("app-shell").classList.add("hidden");
   }
 }
 
 document.getElementById("btn-onboarding-start").addEventListener("click", () => {
+  Storage.trackEvent("onboarding_geo_requested");
   Storage.updateProfile({ onboardingSeen: true });
   enterApp();
   loadHome();
 });
 document.getElementById("btn-onboarding-skip").addEventListener("click", () => {
+  Storage.trackEvent("onboarding_primary_click");
   Storage.updateProfile({ onboardingSeen: true });
   enterApp();
   loadHome({ skipGeo: true });
@@ -278,6 +281,7 @@ async function loadHome({ skipGeo = false } = {}) {
   const loc = skipGeo ? null : await getLocation();
   state.userLocation = loc || DEFAULT_CENTER;
   state.geoDenied = !loc;
+  if (!skipGeo) Storage.trackEvent(loc ? "geo_granted" : "geo_denied");
 
   const nearby = getAllPoints()
     .map((p) => ({ ...p, distanceKm: haversineKm(state.userLocation, p) }))
@@ -298,6 +302,8 @@ async function loadHome({ skipGeo = false } = {}) {
     document.getElementById("retry-home").addEventListener("click", () => loadHome());
     return;
   }
+
+  Storage.trackEvent("home_loaded");
 
   // "hero" — ближайшая точка с прогнозом, на её погоде строим весь обзор дня
   const hero = withForecast[0];
@@ -347,11 +353,13 @@ async function loadHome({ skipGeo = false } = {}) {
     <div class="hub-grid">
       <div class="hub-card hub-card-banner" data-hub="forecast">
         <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
-        <div class="hub-sub">Шансы, часы и причины</div>
+        <div class="hub-label">Прогноз клёва</div>
+        <div class="hub-sub">Шансы, часы и причины — прямо сейчас</div>
       </div>
       <div class="hub-card hub-card-banner" data-hub="reports">
         <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
-        <div class="hub-sub">Что ловят рядом</div>
+        <div class="hub-label">Отчёты рыбаков</div>
+        <div class="hub-sub">Кто и что поймал рядом с вами</div>
       </div>
     </div>
 
@@ -370,6 +378,13 @@ async function loadHome({ skipGeo = false } = {}) {
           </div>`
           )
           .join("")}
+      </div>
+      <div class="quick-report-box" style="margin-top:12px;">
+        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду</div>
+        <div class="quick-report-row">
+          <button class="qr-btn qr-yes" id="home-quick-yes">🟢 Клюёт</button>
+          <button class="qr-btn qr-no" id="home-quick-no">🔴 Не клюёт</button>
+        </div>
       </div>
       <div class="card-cta-row">
         <button class="btn-primary" id="hero-route-btn">Маршрут</button>
@@ -415,15 +430,26 @@ async function loadHome({ skipGeo = false } = {}) {
   });
 
   contentEl.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
+    Storage.trackEvent("hub_click", { hub: "forecast" });
     document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => openRegions());
+  contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => {
+    Storage.trackEvent("hub_click", { hub: "reports" });
+    openRegions();
+  });
 
   contentEl.querySelector('[data-action="report"]').addEventListener("click", () => {
     state.viewStack = ["point", "report"];
     openReportForm(hero.point.id);
   });
   contentEl.querySelector('[data-action="gear"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
+
+  document.getElementById("home-quick-yes").addEventListener("click", () => {
+    submitQuickReport(hero.point, false, true, () => loadHome());
+  });
+  document.getElementById("home-quick-no").addEventListener("click", () => {
+    submitQuickReport(hero.point, false, false, () => loadHome());
+  });
 
   document.getElementById("hero-route-btn").addEventListener("click", () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
@@ -1056,7 +1082,10 @@ async function openPoint(pointOrId) {
 
 // Быстрый отчёт в 1-2 тапа: без формы, для тех, кому некогда её заполнять на воде.
 // Полную форму (вид рыбы, фото, наживка) можно добавить отдельно кнопкой "Подробно".
-function submitQuickReport(point, isAdhoc, isBiting) {
+// onDone — что делать после отправки: по умолчанию открыть карточку точки
+// (сценарий с экрана точки), но с главной удобнее остаться на месте.
+function submitQuickReport(point, isAdhoc, isBiting, onDone) {
+  Storage.trackEvent("quick_report_submitted", { isBiting });
   const targetPoint = isAdhoc ? saveAdhocPoint(point) : point;
   const statsBefore = getProfileStats();
   const profile = Storage.getProfile();
@@ -1092,7 +1121,8 @@ function submitQuickReport(point, isAdhoc, isBiting) {
     setTimeout(() => showToast(`🏅 Новое достижение: «${a.title}»`), 1400 + i * 1800);
   });
 
-  openPoint(targetPoint.id);
+  if (onDone) onDone(targetPoint);
+  else openPoint(targetPoint.id);
 }
 
 function renderDayPills() {
@@ -1453,6 +1483,7 @@ function setReportDetailsOpen(open) {
 }
 
 function openReportForm(pointId) {
+  Storage.trackEvent("report_form_opened", { pointId });
   const point = getPointById(pointId);
   const profile = Storage.getProfile();
   document.getElementById("report-point-id").value = pointId;
@@ -1591,6 +1622,7 @@ document.getElementById("report-form").addEventListener("submit", (e) => {
       ? { authorName: profile.name, authorLevel: getLevelInfo(statsBefore.reportsCount).current.name, authorAvatar: profile.avatar || null }
       : {}),
   };
+  Storage.trackEvent("report_submitted", { pointId, hasDetails: !!(report.species || report.amount || report.tackle || report.bait || report.comment || report.photo) });
   Storage.addReport(report);
   Storage.clearReportDraft();
   invalidatePointCache(pointId);
@@ -2079,6 +2111,7 @@ function renderProfile() {
       <button class="btn-secondary btn-full" id="btn-preview-profile" style="margin-top:12px;">👁️ Предпросмотр профиля</button>
     </div>
 
+    ${profile.publicProfileEnabled ? `
     <div class="section-header"><span class="icon">🔎</span><h3>Что показывать</h3></div>
     <div class="card">
       ${renderSwitchRow("show-avatar", "Аватар", "", profile.privacy.showAvatar)}
@@ -2088,7 +2121,7 @@ function renderProfile() {
       ${renderSwitchRow("show-favoriteWaters", "Любимые водоёмы", "Показывайте только если готовы делиться этой информацией.", profile.privacy.showFavoriteWaters)}
       ${renderSwitchRow("show-achievements", "Достижения", "", profile.privacy.showAchievements)}
       ${renderSwitchRow("show-reports", "Публичные отчёты", "", profile.privacy.showReports)}
-    </div>
+    </div>` : ""}
 
     <div class="card">
       <label class="field-label">Область</label>
