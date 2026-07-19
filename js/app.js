@@ -215,12 +215,6 @@ window.addEventListener("popstate", () => {
   showView(prev, { pushHistory: false });
 });
 
-document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    state.viewStack = [btn.dataset.view];
-    showView(btn.dataset.view, { pushHistory: false });
-  });
-});
 document.querySelectorAll("[data-back]").forEach((btn) => {
   btn.addEventListener("click", goBack);
 });
@@ -234,6 +228,15 @@ document.querySelector('[data-hub="forecast"]').addEventListener("click", () => 
 document.querySelector('[data-hub="reports"]').addEventListener("click", () => {
   Storage.trackEvent("hub_click", { hub: "reports" });
   openRegions();
+});
+
+// Нижнего меню больше нет — профиль/настройки открываются маленькой
+// кнопкой в шапке, доступной с любого экрана. Обычный пуш в стек (не
+// сброс, как было у вкладок), поэтому "назад" возвращает туда, откуда
+// пришли, а не всегда на главную.
+document.getElementById("btn-open-profile").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "profile" });
+  showView("profile");
 });
 
 // ---------- ОНБОРДИНГ ----------
@@ -456,10 +459,13 @@ async function renderForecast({ skipGeo = false } = {}) {
     <div class="card">
       ${bestPoints.map((entry) => renderPlaceRecommendationCard(entry)).join("")}
     </div>
+    <button class="btn-secondary btn-full" id="forecast-map-btn">🗺️ Показать всё на карте</button>
   `;
 
   contentEl.innerHTML = html;
   bindOpenPointButtons(contentEl);
+
+  document.getElementById("forecast-map-btn").addEventListener("click", () => showView("map"));
 
   document.getElementById("hero-route-btn").addEventListener("click", () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
@@ -467,20 +473,14 @@ async function renderForecast({ skipGeo = false } = {}) {
   document.getElementById("hero-details-btn").addEventListener("click", () => openPoint(hero.point.id));
   document.getElementById("hero-gear-btn").addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
-  document.getElementById("location-context").addEventListener("click", () => {
-    state.viewStack = ["profile"];
-    showView("profile", { pushHistory: false });
-  });
+  document.getElementById("location-context").addEventListener("click", () => showView("profile"));
 
   const geoAllowBtn = document.getElementById("btn-geo-allow");
   if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => renderForecast());
   const geoMapBtn = document.getElementById("btn-geo-map");
   if (geoMapBtn) geoMapBtn.addEventListener("click", () => showView("map"));
   const geoProfileBtn = document.getElementById("btn-geo-profile");
-  if (geoProfileBtn) geoProfileBtn.addEventListener("click", () => {
-    state.viewStack = ["profile"];
-    showView("profile", { pushHistory: false });
-  });
+  if (geoProfileBtn) geoProfileBtn.addEventListener("click", () => showView("profile"));
 
   } catch (err) {
     // Раньше при сбое сети экран навсегда оставался с крутилкой — теперь
@@ -920,11 +920,11 @@ let currentWeather = null;
 let currentReports = [];
 let biteChartMode = "weather";
 
-async function openPoint(pointOrId) {
+async function openPoint(pointOrId, { pushHistory = true } = {}) {
   const point = typeof pointOrId === "string" ? getPointById(pointOrId) : pointOrId;
   state.currentPointId = point.id;
   currentOpenPoint = point;
-  showView("point");
+  showView("point", { pushHistory });
   const container = document.getElementById("point-content");
   container.innerHTML = `<div class="state-block"><div class="spinner"></div><p>Считаем прогноз для «${point.name}»...</p></div>`;
 
@@ -1082,7 +1082,7 @@ async function openPoint(pointOrId) {
         openPoint(saved.id);
       } else {
         Storage.toggleFavorite(point.id);
-        openPoint(point.id);
+        openPoint(point.id, { pushHistory: false });
       }
     });
     document.getElementById("btn-route").addEventListener("click", () => {
@@ -1667,8 +1667,13 @@ document.getElementById("report-form").addEventListener("submit", async (e) => {
   const statsAfter = getProfileStats();
   const newAchievements = checkNewAchievements(statsBefore, statsAfter);
 
-  state.viewStack = ["point"];
-  openPoint(pointId);
+  // "Отчёт" всегда открыт поверх "point" в стеке — обычный goBack() (не
+  // ручной сброс viewStack, который раньше терял всю историю выше и
+  // рассинхронизировал её с history API) корректно снимает только report,
+  // возвращая на уже существующую запись "point"; сразу следом перерисовываем
+  // её свежими данными, не добавляя новую запись в историю.
+  goBack();
+  openPoint(pointId, { pushHistory: false });
 
   showToast("Спасибо! Отчёт сохранён и сделает прогноз точнее для рыбаков рядом. 🎣");
   newAchievements.forEach((a, i) => {
@@ -2104,10 +2109,7 @@ function openPublicProfile() {
           <button class="btn-primary" id="pp-open-settings">Открыть настройки</button>
         </div>
       </div>`;
-    document.getElementById("pp-open-settings").addEventListener("click", () => {
-      state.viewStack = ["profile"];
-      showView("profile", { pushHistory: false });
-    });
+    document.getElementById("pp-open-settings").addEventListener("click", () => showView("profile"));
     return;
   }
 

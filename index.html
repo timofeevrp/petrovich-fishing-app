@@ -36,6 +36,7 @@
           <div class="brand-name">Рыбалыч</div>
           <div class="header-status" id="header-status">Твоё приложение для рыбалки</div>
         </div>
+        <button class="header-settings-btn" id="btn-open-profile" aria-label="Профиль и настройки">⚙️</button>
       </div>
     </header>
 
@@ -69,6 +70,7 @@
 
       <!-- MAP VIEW -->
       <section id="view-map" class="view">
+        <button class="back-btn" data-back="forecast">← Назад</button>
         <div class="map-filters">
           <input type="text" id="map-search" placeholder="🔍 Найти водоём по названию" autocomplete="off" />
           <select id="filter-type">
@@ -170,14 +172,16 @@
         </form>
       </section>
 
-      <!-- FAVORITES VIEW -->
+      <!-- FAVORITES VIEW (не в нижнем меню — избранное живёт внутри прогноза) -->
       <section id="view-favorites" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
         <h2>Избранные места</h2>
         <div id="favorites-content"></div>
       </section>
 
       <!-- PROFILE VIEW -->
       <section id="view-profile" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
         <h2>Профиль</h2>
         <div id="profile-content"></div>
       </section>
@@ -236,14 +240,6 @@
       </section>
 
     </main>
-
-    <!-- BOTTOM NAV -->
-    <nav class="tabbar-bottom">
-      <button class="tab-btn active" data-view="home"><span class="tab-icon">🏠</span><span class="tab-label">Главная</span></button>
-      <button class="tab-btn" data-view="map"><span class="tab-icon">🗺️</span><span class="tab-label">Карта</span></button>
-      <button class="tab-btn" data-view="favorites"><span class="tab-icon">⭐</span><span class="tab-label">Избранное</span></button>
-      <button class="tab-btn" data-view="profile"><span class="tab-icon">👤</span><span class="tab-label">Профиль</span></button>
-    </nav>
     </div>
   </div>
 
