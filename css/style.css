@@ -154,6 +154,15 @@ main#views {
 #view-map { padding: 0; display: none; }
 #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 142px - env(safe-area-inset-bottom)); position: relative; margin-bottom: -24px; }
 
+/* Главная теперь всего 2 карточки — без центрирования на высоких экранах
+   (десктоп, крупные телефоны) они прибиты к верху, а под ними голая пустота. */
+#view-home.active {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 142px - env(safe-area-inset-bottom));
+}
+
 /* STATE BLOCKS */
 .state-block {
   text-align: center;
