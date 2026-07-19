@@ -332,20 +332,40 @@ function getGreeting() {
   return "Добрый вечер";
 }
 
-function renderLocationChooser(contentEl) {
+function renderLocationChooser(contentEl, { geoFailed = false } = {}) {
   Storage.trackEvent("location_chooser_shown");
   contentEl.innerHTML = `
     <div class="card" style="text-align:center;padding:32px 22px;">
       <div style="font-size:34px;margin-bottom:10px;">📍</div>
       <div class="card-title" style="font-size:18px;margin-bottom:6px;">Где вы рыбачите?</div>
       <div class="card-sub" style="margin-bottom:20px;">Точный прогноз считается для конкретного места — без этого мы не угадаем регион и покажем что попало.</div>
+      ${geoFailed ? `
+      <div class="warning-banner" style="text-align:left;margin-bottom:16px;">
+        <div class="warning-item"><span class="w-icon">📡</span><span>Не получилось определить местоположение — возможно, доступ к геолокации не разрешён или недоступен здесь. Попробуйте карту или укажите регион вручную.</span></div>
+      </div>` : ""}
       <button class="btn-primary btn-full" id="lc-geo" style="margin-bottom:10px;">📡 Разрешить геолокацию</button>
       <button class="btn-secondary btn-full" id="lc-map" style="margin-bottom:10px;">🗺️ Найти на карте</button>
       <button class="btn-secondary btn-full" id="lc-region" style="margin-bottom:16px;">✏️ Указать регион</button>
       <button class="details-toggle" id="lc-skip" style="margin:0;padding:0;">Показать пример по Москве</button>
     </div>
   `;
-  document.getElementById("lc-geo").addEventListener("click", () => renderForecast());
+  // Геолокацию запрашиваем прямо тут (а не через renderForecast) — иначе
+  // при отказе/недоступности (частый случай внутри WebView MAX, где нет
+  // надёжного способа получить координаты) экран молча перерисовывался
+  // тем же самым содержимым без единого признака, что кнопка вообще
+  // сработала — выглядело как "не работает совсем".
+  document.getElementById("lc-geo").addEventListener("click", async () => {
+    const btn = document.getElementById("lc-geo");
+    btn.disabled = true;
+    btn.textContent = "📡 Определяем...";
+    const loc = await getLocation();
+    if (loc) {
+      Storage.updateProfile({ locationChooserDismissed: true });
+      renderForecast();
+    } else {
+      renderLocationChooser(contentEl, { geoFailed: true });
+    }
+  });
   document.getElementById("lc-map").addEventListener("click", () => {
     Storage.updateProfile({ locationChooserDismissed: true });
     showView("map");
