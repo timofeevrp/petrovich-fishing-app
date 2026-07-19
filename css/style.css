@@ -1323,27 +1323,6 @@ textarea { resize: vertical; }
 .hub-card-banner { padding: 10px 6px 12px; gap: 4px; }
 .hub-banner-img { width: 100%; height: 96px; object-fit: contain; }
 
-/* Карточки главной без растровых картинок — чистые SVG-иконки в
-   акцентных бейджах вместо маскот-иллюстраций, которые читались как
-   случайный клипарт, а не часть дизайн-системы. */
-.hub-card-modern {
-  padding: 26px 12px;
-  gap: 12px;
-  background: linear-gradient(165deg, var(--surface-raised) 0%, var(--surface) 70%);
-}
-.hub-icon-badge {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.hub-icon-badge svg { width: 28px; height: 28px; }
-.hub-icon-badge-yellow { background: var(--yellow-100); color: var(--yellow-400); }
-.hub-icon-badge-green { background: var(--green-100); color: var(--green-400); }
-.hub-card-modern .hub-label { font-size: 15px; }
-
 /* MINI PROFILE CARD (главная) */
 .mini-profile-card {
   display: flex;
