@@ -257,6 +257,13 @@ main#views {
   margin-top: 10px;
 }
 
+/* Короткое "почему" прямо в верхнем блоке карточки точки — 1-2 плюса,
+   1-2 минуса, без похода к полному разбору факторов внизу экрана. */
+.short-why { margin-top: 8px; }
+.short-why-row { font-size: 13px; line-height: 1.4; }
+.short-why-row.positive { color: var(--green-400); }
+.short-why-row.negative { color: var(--red); }
+
 /* score color scale (кроме брендового зелёного) */
 .sc-0 { background: var(--red); }
 .sc-1 { background: var(--orange); }
@@ -378,8 +385,9 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
 }
 .btn-primary:disabled:active, .btn-secondary:disabled:active { transform: none; }
 .btn-secondary {
-  background: var(--green-100);
-  color: var(--green-400);
+  background: var(--gray-50);
+  color: var(--text);
+  border: 1px solid var(--gray-200);
 }
 .btn-secondary:active { transform: scale(0.97); }
 .btn-full { width: 100%; margin-top: 12px; }

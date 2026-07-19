@@ -212,8 +212,8 @@ export function computeScore({ weather, astro, reports, now = new Date() }) {
 export function scoreInterpretation(score) {
   if (score <= 15) return { emoji: "🔴", label: "Очень низкий шанс", tier: 0, text: "Сегодня не лучший день. Лучше выбрать другую дату." };
   if (score <= 35) return { emoji: "🟠", label: "Слабый клёв", tier: 1, text: "Шанс есть, но небольшой. Погода не на вашей стороне." };
-  if (score <= 55) return { emoji: "🟡", label: "Средний потенциал", tier: 2, text: "Может сработать в правильное время суток." };
-  if (score <= 75) return { emoji: "🟢", label: "Хороший шанс", tier: 3, text: "Шанс хороший. Можно ехать." };
+  if (score <= 55) return { emoji: "🟡", label: "Средний клёв", tier: 2, text: "Стоит попробовать, особенно в удачное окно клёва." };
+  if (score <= 75) return { emoji: "🟢", label: "Хороший шанс", tier: 3, text: "Условия подходят — лучше ехать в отмеченное окно." };
   if (score <= 90) return { emoji: "🟢", label: "Отличные условия", tier: 4, text: "Один из лучших дней за последнее время. Не упустите." };
   return { emoji: "🟩", label: "Пик активности", tier: 4, text: "Редкое сочетание факторов. Шансы максимальные." };
 }

@@ -234,6 +234,7 @@ window.addEventListener("popstate", () => {
 });
 
 document.querySelectorAll("[data-back]").forEach((btn) => {
+  if (btn.dataset.confirmLeave) return; // обрабатывается отдельно, см. ниже
   btn.addEventListener("click", goBack);
 });
 
@@ -393,11 +394,12 @@ function renderChoiceScreen({ title, subtitle, options }) {
 function openForecastChoice() {
   showView("choice");
   renderChoiceScreen({
-    title: "Прогноз клёва",
-    subtitle: "Как хотите искать место?",
+    title: "Проверить прогноз",
+    subtitle: "Как хотите найти место?",
     options: [
-      { icon: "📍", label: "Показать рядом", sub: "Ближайшие места по геолокации или региону", onClick: () => openForecastScreen() },
-      { icon: "🔍", label: "Выбрать самому", sub: "Поиск по названию, список или карта", onClick: () => openPlacePicker("forecast") },
+      { icon: "📍", label: "Показать рядом", sub: "Найдём ближайшие водоёмы по геолокации", onClick: () => openForecastScreen() },
+      { icon: "🗺️", label: "Выбрать на карте", sub: "Откройте карту и нажмите на водоём или точку", onClick: () => showView("map") },
+      { icon: "🔍", label: "Найти по названию", sub: "Введите название водоёма или выберите регион", onClick: () => openPlacePicker("forecast") },
     ],
   });
 }
@@ -438,7 +440,7 @@ function renderPlacePicker(query) {
     : (profile.region ? allPoints.filter((p) => p.region === profile.region) : allPoints).slice(0, 10);
 
   container.innerHTML = `
-    <h2>${mode === "report" ? "Куда добавить отчёт?" : "Выберите место"}</h2>
+    <h2>${mode === "report" ? "Куда добавить отчёт?" : "Найти водоём"}</h2>
     <input type="text" id="pp-search" placeholder="🔍 Найти водоём по названию" autocomplete="off" value="${escapeHtml(query || "")}" style="width:100%;border:1px solid var(--gray-200);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--gray-50);color:var(--text);margin-bottom:12px;" />
     <div class="location-context" id="pp-region-line" style="margin-bottom:14px;">📍 ${profile.region ? escapeHtml(profile.region) : "Регион не выбран"} · изменить</div>
 
@@ -753,6 +755,22 @@ function renderScoreWidget(result, interp, icon, compact = false) {
     </div>
     ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Отчётов пока нет — оставьте первый, и прогноз станет точнее.</div>` : ""}`}
   `;
+}
+
+// Короткая версия "Почему такой прогноз" прямо в верхнем блоке карточки
+// точки — 1-2 плюса и 1-2 минуса, самых весомых (allFactors уже отсортирован
+// по |contribution|). Полный разбор всех факторов остаётся ниже, в блоке
+// "Почему такой прогноз?" — это просто ответ на вопрос "ехать или нет"
+// без скролла до конца экрана.
+function renderShortWhy(result) {
+  const positives = result.allFactors.filter((f) => f.positive).slice(0, 2);
+  const negatives = result.allFactors.filter((f) => !f.positive).slice(0, 2);
+  if (!positives.length && !negatives.length) return "";
+  return `
+    <div class="short-why">
+      ${positives.map((f) => `<div class="short-why-row positive">+ ${f.label}</div>`).join("")}
+      ${negatives.map((f) => `<div class="short-why-row negative">− ${f.label}</div>`).join("")}
+    </div>`;
 }
 
 function renderPointListItem(point, result) {
@@ -1137,14 +1155,30 @@ async function openPoint(pointOrId, { pushHistory = true } = {}) {
         <div class="day-pills" id="day-pills"></div>
 
         <div id="score-widget-slot"></div>
-        <div style="margin-top:6px;color:var(--gray-500);font-size:12px;" id="moon-phase-line"></div>
-        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;cursor:pointer;text-decoration:underline dotted;" id="moon-calendar-link">
-          🌙 ${astroNow.lunarDay}-й лунный день · восход луны ${formatTime(astroNow.moonrise)} · заход ${formatTime(astroNow.moonset)} · календарь на месяц ›
-        </div>
-        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;" id="geomagnetic-line" title="Информационно: научная связь геомагнитной активности с клёвом не подтверждена.">🧲 Проверяем геомагнитную обстановку…</div>
+        <div class="best-window-line">⏰ Лучше ехать: ${dayWindows.best.label.toLowerCase()}</div>
+        <div id="short-why-slot"></div>
 
-        <div class="card-divider"></div>
-        <div class="card-title" style="font-size:13px;">⏰ Лучшие часы сегодня</div>
+        <div class="card-cta-row" style="margin-top:12px;">
+          <button class="btn-primary" id="btn-route">🧭 Маршрут</button>
+          <button class="btn-secondary" id="btn-report">📝 Оставить отчёт</button>
+        </div>
+      </div>
+
+      ${warnings.length ? `
+      <div class="warning-banner">
+        ${warnings.map((w) => `<div class="warning-item"><span class="w-icon">${w.icon}</span><span>${w.text}</span></div>`).join("")}
+      </div>` : ""}
+
+      <div class="quick-report-box">
+        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду, это сразу улучшит прогноз</div>
+        <div class="quick-report-row">
+          <button class="qr-btn qr-yes" id="btn-quick-yes">🟢 Клюёт</button>
+          <button class="qr-btn qr-no" id="btn-quick-no">🔴 Не клюёт</button>
+        </div>
+      </div>
+
+      <div class="section-header"><span class="icon">⏰</span><h3>Лучшие часы сегодня</h3></div>
+      <div class="card">
         <div class="window-row">
           ${dayWindows.windows
             .map(
@@ -1157,23 +1191,22 @@ async function openPoint(pointOrId, { pushHistory = true } = {}) {
             )
             .join("")}
         </div>
+        <div class="card-divider"></div>
+        <div style="color:var(--gray-500);font-size:12px;" id="moon-phase-line"></div>
+        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;cursor:pointer;text-decoration:underline dotted;" id="moon-calendar-link">
+          🌙 ${astroNow.lunarDay}-й лунный день · восход луны ${formatTime(astroNow.moonrise)} · заход ${formatTime(astroNow.moonset)} · календарь на месяц ›
+        </div>
+        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;" id="geomagnetic-line" title="Информационно: научная связь геомагнитной активности с клёвом не подтверждена.">🧲 Проверяем геомагнитную обстановку…</div>
       </div>
+
+      ${!isAdhoc ? `
+      <div class="section-header"><span class="icon">📰</span><h3>Отчёты рыбаков (${reports.length})</h3></div>
+      <div class="card">
+        ${renderReportsList(reports, point)}
+      </div>` : `<div class="empty-state" style="font-size:13px;">Сохраните это место, чтобы оставлять отчёты и видеть, что здесь ловят другие рыбаки.</div>`}
 
       <div class="section-header"><span class="icon">📊</span><h3>Клёв по часам</h3></div>
       <div class="card" id="bite-chart-slot"></div>
-
-      <div class="section-header"><span class="icon">🌦️</span><h3>Погода и давление</h3></div>
-      <div class="card">
-        ${renderHourlyStrip(weather)}
-        <div class="card-divider"></div>
-        <div class="card-title" style="font-size:13px;">Давление за 48 часов</div>
-        ${renderPressureSparkline(weather)}
-      </div>
-
-      ${warnings.length ? `
-      <div class="warning-banner">
-        ${warnings.map((w) => `<div class="warning-item"><span class="w-icon">${w.icon}</span><span>${w.text}</span></div>`).join("")}
-      </div>` : ""}
 
       <div class="card">
         <div class="card-title">Почему такой прогноз?</div>
@@ -1188,28 +1221,20 @@ async function openPoint(pointOrId, { pushHistory = true } = {}) {
         <div class="card-sub" style="margin-top:8px;margin-bottom:0;">Баллы 0–100, как и общий прогноз. Это не проценты вероятности.</div>
       </div>
 
-      <div class="quick-report-box">
-        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду, это сразу улучшит прогноз</div>
-        <div class="quick-report-row">
-          <button class="qr-btn qr-yes" id="btn-quick-yes">🟢 Клюёт</button>
-          <button class="qr-btn qr-no" id="btn-quick-no">🔴 Не клюёт</button>
-        </div>
-      </div>
-
       <div class="card-row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn-secondary" id="btn-fav" style="flex:1;min-width:44%;">${isAdhoc ? "💾 Сохранить точку" : isFav ? "★ В избранном" : "☆ Сохранить"}</button>
-        <button class="btn-secondary" id="btn-route" style="flex:1;min-width:44%;">🧭 Маршрут</button>
-        <button class="btn-secondary" id="btn-report" style="flex:1;min-width:44%;">📝 Отчёт</button>
         <button class="btn-secondary" id="btn-gear" style="flex:1;min-width:44%;">🎒 Что взять</button>
       </div>
 
-      ${point.rules ? `<div class="card"><div class="card-title">Правила / ограничения</div><div class="card-sub">${point.rules}</div></div>` : ""}
-
-      ${!isAdhoc ? `
+      <div class="section-header"><span class="icon">🌦️</span><h3>Погода и давление</h3></div>
       <div class="card">
-        <div class="card-title">Отчёты рыбаков (${reports.length})</div>
-        ${renderReportsList(reports, point)}
-      </div>` : `<div class="empty-state" style="font-size:13px;">Сохраните это место, чтобы оставлять отчёты и видеть, что здесь ловят другие рыбаки.</div>`}
+        ${renderHourlyStrip(weather)}
+        <div class="card-divider"></div>
+        <div class="card-title" style="font-size:13px;">Давление за 48 часов</div>
+        ${renderPressureSparkline(weather)}
+      </div>
+
+      ${point.rules ? `<div class="card"><div class="card-title">Правила / ограничения</div><div class="card-sub">${point.rules}</div></div>` : ""}
     `;
 
     renderDayPills();
@@ -1310,7 +1335,7 @@ async function submitQuickReport(point, isAdhoc, isBiting, onDone) {
   const statsAfter = getProfileStats();
   const newAchievements = checkNewAchievements(statsBefore, statsAfter);
 
-  showToast(isBiting ? "Отмечено: клюёт! Спасибо, учли в прогнозе. 🎣" : "Отмечено: не клюёт. Тоже полезная информация, спасибо!");
+  showToast(isBiting ? "Отмечено: клюёт! Учли в прогнозе. Хотите добавить подробный отчёт? 🎣" : "Отмечено: не клюёт. Тоже полезная информация — можно добавить подробности в отчёте.");
   newAchievements.forEach((a, i) => {
     setTimeout(() => showToast(`🏅 Новое достижение: «${a.title}»`), 1400 + i * 1800);
   });
@@ -1361,6 +1386,8 @@ function updateScoreSlot() {
   moonLineEl.textContent =
     `Фаза луны: ${day.result.moonPhaseLabel} · Вода (≈): ${Math.round(day.waterTempEstimate)}°C, воздух: ${Math.round(day.tempAir)}°C`;
   moonLineEl.title = "Температура воды — оценка по сглаженной температуре воздуха за 5 дней, не прямое измерение датчиком.";
+  const shortWhySlot = document.getElementById("short-why-slot");
+  if (shortWhySlot) shortWhySlot.innerHTML = renderShortWhy(day.result);
 }
 
 function updateWhySlot() {
@@ -1703,6 +1730,9 @@ function openReportForm(pointId) {
   document.getElementById("report-point-display").innerHTML = point
     ? `📍 ${point.name}${point.town ? ` <span class="card-sub" style="margin:0;">· ${point.town}</span>` : ""}`
     : "";
+  const todayStr = new Date().toISOString().slice(0, 10);
+  document.getElementById("report-date").value = draft?.date || todayStr;
+  document.getElementById("report-date").max = todayStr;
   const locationSelect = document.getElementById("report-location-privacy");
   locationSelect.value = draft ? draft.locationPrivacy : profile.privacy.defaultLocationPrivacy;
   document.getElementById("report-exact-warning").style.display = locationSelect.value === "exact" ? "block" : "none";
@@ -1728,15 +1758,28 @@ function openReportForm(pointId) {
 // иначе легко случайно отправить пустой отчёт, не добавляющий пользы
 // другим рыбакам. Быстрый 1-тап отчёт (submitQuickReport) идёт в обход
 // этой формы отдельным путём и здесь не участвует.
-function updateReportSubmitState() {
+function reportFormHasContent() {
   const species = document.getElementById("report-species").value.trim();
   const amount = document.getElementById("report-amount").value.trim();
   const tackle = document.getElementById("report-tackle").value.trim();
   const bait = document.getElementById("report-bait").value.trim();
   const comment = document.getElementById("report-comment").value.trim();
-  const hasContent = !!(species || amount || tackle || bait || comment || state.reportSelection.photoDataUrl);
-  document.querySelector('#report-form button[type="submit"]').disabled = !hasContent;
+  return !!(species || amount || tackle || bait || comment || state.reportSelection.photoDataUrl);
 }
+
+function updateReportSubmitState() {
+  document.querySelector('#report-form button[type="submit"]').disabled = !reportFormHasContent();
+}
+
+// Кнопка "Назад" из формы отчёта — если человек уже начал заполнять
+// детали, выходить молча нельзя (шаблон "Prompt for Claude Code",
+// раздел 13): переспрашиваем. Черновик и так автосохраняется на каждый
+// input, так что реальной потери данных нет, но явное подтверждение
+// всё равно ожидается пользователем.
+document.getElementById("report-back-btn").addEventListener("click", () => {
+  if (reportFormHasContent() && !window.confirm("Вы начали заполнять отчёт. Выйти без сохранения?")) return;
+  goBack();
+});
 
 function saveReportDraftNow() {
   const pointId = document.getElementById("report-point-id").value;
@@ -1747,6 +1790,7 @@ function saveReportDraftNow() {
     rating: state.reportSelection.rating,
     authorVisibility: state.reportSelection.authorVisibility,
     locationPrivacy: document.getElementById("report-location-privacy").value,
+    date: document.getElementById("report-date").value,
     species: document.getElementById("report-species").value.trim(),
     amount: document.getElementById("report-amount").value.trim(),
     tackle: document.getElementById("report-tackle").value.trim(),
@@ -1768,6 +1812,7 @@ document.querySelectorAll("#report-details input, #report-details textarea").for
   });
 });
 document.getElementById("report-location-privacy").addEventListener("change", saveReportDraftNow);
+document.getElementById("report-date").addEventListener("change", saveReportDraftNow);
 
 document.querySelectorAll("[data-biting]").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1828,10 +1873,17 @@ document.getElementById("report-form").addEventListener("submit", async (e) => {
   const point = getPointById(pointId);
   const predictedScore = point ? await getPointForecast(point).then((f) => f.result.score).catch(() => null) : null;
 
+  // Дата отчёта выбирается явно (поле "Когда?") — если это сегодня, берём
+  // полную текущую метку времени (точнее для "только что"), если задним
+  // числом — время неизвестно, ставим полдень выбранного дня.
+  const dateValue = document.getElementById("report-date").value;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const datetime = (!dateValue || dateValue === todayStr) ? new Date().toISOString() : new Date(dateValue + "T12:00:00").toISOString();
+
   const report = {
     id: "r" + Date.now(),
     pointId,
-    datetime: new Date().toISOString(),
+    datetime,
     isBiting: state.reportSelection.isBiting,
     species: document.getElementById("report-species").value.trim(),
     amount: document.getElementById("report-amount").value.trim(),
@@ -2190,15 +2242,50 @@ function bindRegionChips(container) {
   if (btn) btn.addEventListener("click", () => openRegions());
 }
 
+// "Отчёты рыбаков" — отдельный сценарий (раздел 14 ТЗ): кнопка "Оставить
+// отчёт" сразу сверху и 3 фильтра переключают, как смотреть отчёты —
+// рядом (по геопозиции), по региону (список регионов, как было) или
+// по конкретному водоёму (поиск точки, затем её отчёты).
+let reportsFeedMode = "region";
+let reportsWaterPointId = null;
+
 function openRegions() {
   showView("regions");
-  const regions = getRegionsSummary();
+  renderRegionsScreen();
+}
+
+function renderRegionsScreen() {
   const container = document.getElementById("regions-content");
+  container.innerHTML = `
+    <button class="btn-primary btn-full" id="regions-add-report-btn" style="margin-bottom:14px;">📝 Оставить отчёт</button>
+    <div class="sort-chips">
+      <div class="sort-chip ${reportsFeedMode === "nearby" ? "active" : ""}" data-feed="nearby">Рядом</div>
+      <div class="sort-chip ${reportsFeedMode === "region" ? "active" : ""}" data-feed="region">По региону</div>
+      <div class="sort-chip ${reportsFeedMode === "water" ? "active" : ""}" data-feed="water">По водоёму</div>
+    </div>
+    <div id="regions-feed-slot"></div>
+  `;
+  document.getElementById("regions-add-report-btn").addEventListener("click", () => openPlacePicker("report"));
+  container.querySelectorAll("[data-feed]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      reportsFeedMode = chip.dataset.feed;
+      renderRegionsScreen();
+    });
+  });
+
+  const slot = document.getElementById("regions-feed-slot");
+  if (reportsFeedMode === "nearby") renderNearbyReportsFeed(slot);
+  else if (reportsFeedMode === "water") renderWaterReportsFeed(slot);
+  else renderRegionsList(slot);
+}
+
+function renderRegionsList(slot) {
+  const regions = getRegionsSummary();
   if (!regions.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div>Пока нет точек с определённым регионом. Добавьте точку на карте, регион определится автоматически.</div>`;
+    slot.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div>Пока нет точек с определённым регионом. Добавьте точку на карте, регион определится автоматически.</div>`;
     return;
   }
-  container.innerHTML = `<div class="card">
+  slot.innerHTML = `<div class="card">
     ${regions
       .map(
         (r) => `
@@ -2212,7 +2299,77 @@ function openRegions() {
       )
       .join("")}
   </div>`;
-  bindRegionChips(container);
+  bindRegionChips(slot);
+}
+
+// "Рядом" — свежие отчёты по всем точкам, отсортированные по расстоянию
+// от текущего местоположения (или Москвы, если геопозиция ещё неизвестна).
+function renderNearbyReportsFeed(slot) {
+  const loc = state.userLocation || DEFAULT_CENTER;
+  const allPoints = getAllPoints();
+  const pointById = new Map(allPoints.map((p) => [p.id, p]));
+  const reports = Storage.getReports()
+    .filter((r) => pointById.has(r.pointId))
+    .map((r) => ({ report: r, distanceKm: haversineKm(loc, pointById.get(r.pointId)) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 15)
+    .map((x) => x.report);
+
+  slot.innerHTML = `<div class="card">
+    ${reports.length
+      ? renderRecentReportsFeed(reports)
+      : `<div class="empty-state" style="padding:16px 0;"><div class="icon">📝</div>Пока нет свежих отчётов рядом. Оставьте первый — это поможет другим рыбакам.</div>`}
+  </div>`;
+  bindOpenPointButtons(slot);
+  bindReportAuthorLinks(slot);
+}
+
+// "По водоёму" — сначала поиск конкретной точки, затем отчёты именно по ней.
+function renderWaterReportsFeed(slot) {
+  const point = reportsWaterPointId ? getPointById(reportsWaterPointId) : null;
+  if (!point) {
+    const allPoints = getAllPoints().slice(0, 10);
+    slot.innerHTML = `
+      <input type="text" id="rw-search" placeholder="🔍 Найти водоём по названию" autocomplete="off" style="width:100%;border:1px solid var(--gray-200);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--gray-50);color:var(--text);margin-bottom:12px;" />
+      <div class="card" id="rw-list">${allPoints.map((p) => renderPointListItem(p, null)).join("")}</div>
+    `;
+    document.getElementById("rw-search").addEventListener("input", (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      const matches = (q ? getAllPoints().filter((p) => p.name.toLowerCase().includes(q)) : getAllPoints()).slice(0, 10);
+      document.getElementById("rw-list").innerHTML = matches.length
+        ? matches.map((p) => renderPointListItem(p, null)).join("")
+        : `<div class="empty-state" style="padding:12px 0;">Ничего не нашлось.</div>`;
+      document.getElementById("rw-list").querySelectorAll("[data-open-point]").forEach((el) => {
+        el.addEventListener("click", () => {
+          reportsWaterPointId = el.dataset.openPoint;
+          renderWaterReportsFeed(slot);
+        });
+      });
+    });
+    slot.querySelectorAll("[data-open-point]").forEach((el) => {
+      el.addEventListener("click", () => {
+        reportsWaterPointId = el.dataset.openPoint;
+        renderWaterReportsFeed(slot);
+      });
+    });
+    return;
+  }
+
+  const reports = Storage.getReports(point.id);
+  slot.innerHTML = `
+    <div class="location-context" id="rw-change">📍 ${escapeHtml(point.name)} · сменить водоём</div>
+    <div class="card">
+      ${reports.length
+        ? renderRecentReportsFeed(reports)
+        : `<div class="empty-state" style="padding:16px 0;"><div class="icon">📝</div>По водоёму «${escapeHtml(point.name)}» ещё нет отчётов. Оставьте первый.</div>`}
+    </div>
+  `;
+  document.getElementById("rw-change").addEventListener("click", () => {
+    reportsWaterPointId = null;
+    renderWaterReportsFeed(slot);
+  });
+  bindOpenPointButtons(slot);
+  bindReportAuthorLinks(slot);
 }
 
 function pluralPoints(n) {

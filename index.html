@@ -115,17 +115,20 @@
 
       <!-- REPORT FORM VIEW -->
       <section id="view-report" class="view">
-        <button class="back-btn" data-back="point">← Назад</button>
+        <button class="back-btn" data-back="point" data-confirm-leave="1" id="report-back-btn">← Назад</button>
         <h2>Отчёт о рыбалке</h2>
         <form id="report-form">
           <input type="hidden" id="report-point-id" />
 
           <div class="card" id="report-point-display" style="margin-bottom:14px;"></div>
 
-          <label class="field-label">Клюёт?</label>
+          <label class="field-label">Когда?</label>
+          <input type="date" id="report-date" style="margin-bottom:4px;" />
+
+          <label class="field-label">Как клевало?</label>
           <div class="segmented">
-            <button type="button" class="seg-btn active" data-biting="true">🟢 Клюёт</button>
-            <button type="button" class="seg-btn" data-biting="false">🔴 Не клюёт</button>
+            <button type="button" class="seg-btn active" data-biting="true">🟢 Клевало</button>
+            <button type="button" class="seg-btn" data-biting="false">🔴 Не клевало</button>
           </div>
 
           <label class="field-label">Автор и место</label>
@@ -151,6 +154,17 @@
           </button>
 
           <div class="report-details hidden" id="report-details">
+            <label class="field-label">Что поймали?</label>
+            <input type="text" id="report-species" placeholder="Вид рыбы, например: щука, окунь" />
+            <input type="text" id="report-amount" placeholder="Вес / количество, например: до 1 кг, 3 шт" style="margin-top:6px;" />
+
+            <label class="field-label">На что ловили?</label>
+            <input type="text" id="report-tackle" placeholder="Снасти: спиннинг, фидер..." />
+            <input type="text" id="report-bait" placeholder="Наживка: червь, воблер..." style="margin-top:6px;" />
+
+            <label class="field-label">Комментарий</label>
+            <textarea id="report-comment" rows="3" placeholder="Расскажите, как прошла рыбалка"></textarea>
+
             <label class="field-label">Фото улова 📷</label>
             <label class="photo-upload-box" id="photo-upload-label">
               <input type="file" id="report-photo" accept="image/*" capture="environment" />
@@ -158,21 +172,6 @@
               <span id="photo-upload-text">Нажмите, чтобы сделать фото или выбрать из галереи</span>
             </label>
             <div id="report-photo-preview"></div>
-
-            <label class="field-label">Вид рыбы</label>
-            <input type="text" id="report-species" placeholder="Например: щука, окунь" />
-
-            <label class="field-label">Вес / количество (примерно)</label>
-            <input type="text" id="report-amount" placeholder="Например: до 1 кг, 3 шт" />
-
-            <label class="field-label">Снасти</label>
-            <input type="text" id="report-tackle" placeholder="Спиннинг, фидер..." />
-
-            <label class="field-label">Наживка</label>
-            <input type="text" id="report-bait" placeholder="Червь, воблер..." />
-
-            <label class="field-label">Комментарий</label>
-            <textarea id="report-comment" rows="3" placeholder="Расскажите, как прошла рыбалка"></textarea>
 
             <label class="field-label">Оценка места</label>
             <div class="stars" id="report-stars">
@@ -214,7 +213,7 @@
       <!-- REGIONS LIST VIEW -->
       <section id="view-regions" class="view">
         <button class="back-btn" data-back="home">← Назад</button>
-        <h2>Регионы</h2>
+        <h2>Отчёты рыбаков</h2>
         <div id="regions-content"></div>
       </section>
 
