@@ -427,27 +427,8 @@ async function loadHome({ skipGeo = false } = {}) {
 
     <div class="card" id="home-forecast-anchor">
       <div class="card-sub">${getGreeting()}. Прогноз на сегодня: ${hero.point.name}</div>
-      ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
-      ${renderConfidenceBadge(heroResult)}
-      <div class="window-row" style="margin-top:12px;">
-        ${dayWindows.windows
-          .map(
-            (w) => `
-          <div class="window-pill ${w.key === dayWindows.best.key ? "best" : ""}">
-            <div class="wp-icon">${w.icon}</div>
-            <div class="wp-label">${w.label}</div>
-            <div class="wp-score">${w.result.score}</div>
-          </div>`
-          )
-          .join("")}
-      </div>
-      <div class="quick-report-box" style="margin-top:12px;">
-        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду</div>
-        <div class="quick-report-row">
-          <button class="qr-btn qr-yes" id="home-quick-yes">🟢 Клюёт</button>
-          <button class="qr-btn qr-no" id="home-quick-no">🔴 Не клюёт</button>
-        </div>
-      </div>
+      ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current), true)}
+      <div class="best-window-line">⏰ Лучшее окно: ${dayWindows.best.label.toLowerCase()}, ${dayWindows.best.result.score} из 100</div>
       <div class="card-cta-row">
         <button class="btn-primary" id="hero-route-btn">Маршрут</button>
         <button class="btn-secondary" id="hero-details-btn">Подробнее</button>
@@ -479,13 +460,6 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => {
     Storage.trackEvent("hub_click", { hub: "reports" });
     openRegions();
-  });
-
-  document.getElementById("home-quick-yes").addEventListener("click", () => {
-    submitQuickReport(hero.point, false, true, () => loadHome());
-  });
-  document.getElementById("home-quick-no").addEventListener("click", () => {
-    submitQuickReport(hero.point, false, false, () => loadHome());
   });
 
   document.getElementById("hero-route-btn").addEventListener("click", () => {
@@ -594,7 +568,10 @@ function loadGeomagneticLine() {
     });
 }
 
-function renderScoreWidget(result, interp, icon) {
+// compact — облегчённая версия для главной (только балл и статус, без чипов
+// факторов/бейджа точности/подсказки про отчёты): всё это уже есть на
+// карточке конкретной точки, дублировать на главной незачем.
+function renderScoreWidget(result, interp, icon, compact = false) {
   return `
     <div class="score-widget">
       <div class="score-circle sc-${interp.tier}">
@@ -606,10 +583,11 @@ function renderScoreWidget(result, interp, icon) {
         <div class="score-sub">${interp.text}</div>
       </div>
     </div>
+    ${compact ? "" : `
     <div class="score-factors">
       ${result.topFactors.map((f) => `<span class="factor-chip">${f}</span>`).join("")}
     </div>
-    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Отчётов пока нет — оставьте первый, и прогноз станет точнее.</div>` : ""}
+    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Отчётов пока нет — оставьте первый, и прогноз станет точнее.</div>` : ""}`}
   `;
 }
 
