@@ -199,7 +199,10 @@ function showView(viewId, { pushHistory = true } = {}) {
   if (viewId === "map") initMapIfNeeded();
   if (viewId === "favorites") renderFavorites();
   if (viewId === "profile") renderProfile();
-  if (viewId === "home" && homeLoadFailed) loadHome();
+  if (viewId === "home" && (homeLoadFailed || state.homeStale)) {
+    state.homeStale = false;
+    loadHome();
+  }
 }
 
 // "← Назад" в интерфейсе идёт тем же путём, что и системная кнопка "назад"
@@ -384,6 +387,26 @@ async function loadHome({ skipGeo = false } = {}) {
       ),
     }));
 
+  // Избранные места должны реально влиять на главную, а не требовать
+  // отдельного похода на вкладку "Избранное" — тянем их прогноз отдельно
+  // от "ближайших 8", т.к. любимое место может быть не в этом радиусе.
+  const favIds = Storage.getFavorites();
+  const favPoints = favIds.map((id) => getPointById(id)).filter(Boolean);
+  const favForecastsRaw = await mapWithConcurrency(favPoints, 3, (p) => getPointForecast(p).catch(() => null));
+  const favEntries = favPoints
+    .map((point, i) => ({ point, forecast: favForecastsRaw[i], distanceKm: haversineKm(state.userLocation, point) }))
+    .filter((x) => x.forecast)
+    .map((entry) => ({
+      ...entry,
+      windows: computeDayWindows(entry.forecast.weather, entry.point.lat, entry.point.lon, Storage.getReports(entry.point.id)),
+    }));
+
+  const locationContext = state.geoDenied
+    ? state.usingRegionFallback
+      ? { icon: "📍", text: `${profile.region} (по профилю)` }
+      : { icon: "📍", text: "Москва (по умолчанию)" }
+    : { icon: "📍", text: "Рядом с вами (геолокация)" };
+
   const recentReports = Storage.getReports().slice(0, 3);
   const profileStats = getProfileStats();
   const { current: level, next: nextLevel, progress: levelProgress } = getLevelInfo(profileStats.reportsCount);
@@ -401,6 +424,8 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="hub-sub">Кто и что поймал рядом с вами</div>
       </div>
     </div>
+
+    <div class="location-context" id="location-context">${locationContext.icon} ${escapeHtml(locationContext.text)} · изменить</div>
 
     <div class="card" id="home-forecast-anchor">
       <div class="card-sub">${getGreeting()}. Прогноз на сегодня: ${hero.point.name}</div>
@@ -435,6 +460,12 @@ async function loadHome({ skipGeo = false } = {}) {
       <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
       <div class="quick-action" data-action="gear"><span class="qa-icon">🎒</span>Что взять</div>
     </div>
+
+    ${favEntries.length ? `
+    <div class="section-header"><span class="icon">⭐</span><h3>Избранное</h3></div>
+    <div class="card">
+      ${favEntries.map((entry) => renderPlaceRecommendationCard(entry)).join("")}
+    </div>` : ""}
 
     ${geoNotice}
 
@@ -494,6 +525,11 @@ async function loadHome({ skipGeo = false } = {}) {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
   });
   document.getElementById("hero-details-btn").addEventListener("click", () => openPoint(hero.point.id));
+
+  document.getElementById("location-context").addEventListener("click", () => {
+    state.viewStack = ["profile"];
+    showView("profile", { pushHistory: false });
+  });
 
   const geoAllowBtn = document.getElementById("btn-geo-allow");
   if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
@@ -758,6 +794,7 @@ async function showPlaceSheet(point) {
     });
     document.getElementById("ps-save-btn").addEventListener("click", () => {
       Storage.toggleFavorite(point.id);
+      state.homeStale = true;
       showPlaceSheet(point);
     });
   } catch {
@@ -930,6 +967,7 @@ function saveAdhocPoint(point) {
   const saved = { ...point, id: "u" + Date.now(), name, type, town: point.town || "Добавлено вами", adhoc: false };
   Storage.addUserPoint(saved);
   Storage.toggleFavorite(saved.id);
+  state.homeStale = true;
   if (mapInitialized) renderMarkers();
   return saved;
 }
@@ -1106,6 +1144,7 @@ async function openPoint(pointOrId) {
         openPoint(saved.id);
       } else {
         Storage.toggleFavorite(point.id);
+        state.homeStale = true;
         openPoint(point.id);
       }
     });
@@ -1799,6 +1838,7 @@ function renderFavoritesList(container) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       Storage.toggleFavorite(btn.dataset.removeFav);
+      state.homeStale = true;
       showToast("Убрано из избранного");
       renderFavorites();
     });
