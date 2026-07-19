@@ -45,7 +45,7 @@ function precipCloudScore(precipMm, cloudPct) {
   return clamp(score);
 }
 
-function solunarScore(astro, now) {
+export function solunarScore(astro, now) {
   const phase = astro.moonPhaseAngle;
   let score = 50 + 40 * Math.cos(4 * Math.PI * phase);
 

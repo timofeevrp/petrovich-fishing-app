@@ -15,6 +15,7 @@ import { fetchKpIndex, kpLabel } from "./geomagnetic.js";
 import { ARTICLES, getArticleById, estimateReadMinutes } from "./articles.js";
 import { getGearTips } from "./gear.js";
 import { normalizeMaxContact, renderMaxContact } from "./maxlink.js";
+import { computeMonthLunarScores } from "./mooncalendar.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
 
@@ -992,8 +993,8 @@ async function openPoint(pointOrId) {
 
         <div id="score-widget-slot"></div>
         <div style="margin-top:6px;color:var(--gray-500);font-size:12px;" id="moon-phase-line"></div>
-        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;">
-          🌙 ${astroNow.lunarDay}-й лунный день · восход луны ${formatTime(astroNow.moonrise)} · заход ${formatTime(astroNow.moonset)}
+        <div style="margin-top:2px;color:var(--gray-500);font-size:12px;cursor:pointer;text-decoration:underline dotted;" id="moon-calendar-link">
+          🌙 ${astroNow.lunarDay}-й лунный день · восход луны ${formatTime(astroNow.moonrise)} · заход ${formatTime(astroNow.moonset)} · календарь на месяц ›
         </div>
         <div style="margin-top:2px;color:var(--gray-500);font-size:12px;" id="geomagnetic-line" title="Информационно: научная связь геомагнитной активности с клёвом не подтверждена.">🧲 Проверяем геомагнитную обстановку…</div>
       </div>
@@ -1097,6 +1098,8 @@ async function openPoint(pointOrId) {
         });
     }
 
+    document.getElementById("moon-calendar-link").addEventListener("click", () => openMoonCalendar(point));
+
     document.getElementById("btn-fav").addEventListener("click", () => {
       if (isAdhoc) {
         const saved = saveAdhocPoint(point);
@@ -1129,12 +1132,13 @@ async function openPoint(pointOrId) {
 // Полную форму (вид рыбы, фото, наживка) можно добавить отдельно кнопкой "Подробно".
 // onDone — что делать после отправки: по умолчанию открыть карточку точки
 // (сценарий с экрана точки), но с главной удобнее остаться на месте.
-function submitQuickReport(point, isAdhoc, isBiting, onDone) {
+async function submitQuickReport(point, isAdhoc, isBiting, onDone) {
   Storage.trackEvent("quick_report_submitted", { isBiting });
   const targetPoint = isAdhoc ? saveAdhocPoint(point) : point;
   const statsBefore = getProfileStats();
   const profile = Storage.getProfile();
   const authorVisibility = profile.privacy.defaultReportAuthorVisibility;
+  const predictedScore = await getPointForecast(targetPoint).then((f) => f.result.score).catch(() => null);
 
   const report = {
     id: "r" + Date.now(),
@@ -1150,6 +1154,7 @@ function submitQuickReport(point, isAdhoc, isBiting, onDone) {
     rating: 0,
     locationPrivacy: profile.privacy.defaultLocationPrivacy,
     authorVisibility,
+    predictedScore,
     ...(authorVisibility === "named"
       ? { authorName: profile.name, authorLevel: getLevelInfo(statsBefore.reportsCount).current.name, authorAvatar: profile.avatar || null }
       : {}),
@@ -1458,6 +1463,7 @@ function renderReportsList(reports, point) {
           <span>${locationLabel(r, point)} · ${date.toLocaleDateString("ru-RU")} ${date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
           <span class="${r.isBiting ? "report-biting-yes" : "report-biting-no"}">${r.isBiting ? "🟢 Клюёт" : "🔴 Не клюёт"}</span>
         </div>
+        ${r.predictedScore != null ? `<div class="card-sub" style="margin-top:4px;">🎯 Прогноз в момент отчёта: ${r.predictedScore}/100</div>` : ""}
         ${r.species ? `<div style="font-weight:600;margin-top:4px;">${escapeHtml(r.species)}${r.amount ? " · " + escapeHtml(r.amount) : ""}</div>` : ""}
         ${r.photo ? `<img class="report-photo" src="${r.photo}" />` : ""}
         ${r.comment ? `<div style="font-size:14px;margin-top:4px;">${escapeHtml(r.comment)}</div>` : ""}
@@ -1646,12 +1652,17 @@ document.getElementById("report-photo").addEventListener("change", (e) => {
   reader.readAsDataURL(file);
 });
 
-document.getElementById("report-form").addEventListener("submit", (e) => {
+document.getElementById("report-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const pointId = document.getElementById("report-point-id").value;
   const statsBefore = getProfileStats();
   const profile = Storage.getProfile();
   const authorVisibility = state.reportSelection.authorVisibility || "anonymous";
+  // Снэпшот текущего прогноза на момент отчёта — чтобы потом можно было
+  // честно сверить "что обещал прогноз" с тем, что было на самом деле
+  // (как у Fishbrain: погода прикладывается к каждому улову в логбуке).
+  const point = getPointById(pointId);
+  const predictedScore = point ? await getPointForecast(point).then((f) => f.result.score).catch(() => null) : null;
 
   const report = {
     id: "r" + Date.now(),
@@ -1667,6 +1678,7 @@ document.getElementById("report-form").addEventListener("submit", (e) => {
     rating: state.reportSelection.rating,
     locationPrivacy: document.getElementById("report-location-privacy").value,
     authorVisibility,
+    predictedScore,
     ...(authorVisibility === "named"
       ? { authorName: profile.name, authorLevel: getLevelInfo(statsBefore.reportsCount).current.name, authorAvatar: profile.avatar || null }
       : {}),
@@ -1891,6 +1903,61 @@ function openGearScreen(point, weather) {
         </div>`
       : `<div class="empty-state"><div class="icon">☀️</div>Погода спокойная, ничего особенного брать не нужно.</div>`}
   `;
+}
+
+const MC_MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+
+function openMoonCalendar(point) {
+  showView("moon-calendar");
+  renderMoonCalendarMonth(point, 0);
+}
+
+// monthOffset не трогает showView/историю — иначе каждый тап "След./Пред."
+// добавлял бы отдельный экран в стек и кнопке "назад" пришлось бы
+// пролистывать все месяцы обратно вместо одного шага к карточке точки.
+function renderMoonCalendarMonth(point, monthOffset) {
+  const container = document.getElementById("moon-calendar-content");
+  const base = new Date();
+  base.setDate(1);
+  base.setMonth(base.getMonth() + monthOffset);
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const days = computeMonthLunarScores(year, month, point.lat, point.lon);
+
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // Пн=0..Вс=6
+  const todayKey = new Date().toDateString();
+
+  container.innerHTML = `
+    <div class="card-sub" style="margin-bottom:10px;">${point.name} · чисто лунный сигнал, без погоды — фаза луны известна на месяцы вперёд, в отличие от прогноза погоды</div>
+    <div class="mc-nav">
+      <button class="btn-secondary" id="mc-prev">‹</button>
+      <div class="mc-month-label">${MC_MONTH_NAMES[month]} ${year}</div>
+      <button class="btn-secondary" id="mc-next">›</button>
+    </div>
+    <div class="mc-weekdays"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+    <div class="mc-grid">
+      ${Array.from({ length: firstWeekday }).map(() => `<div class="mc-cell mc-blank"></div>`).join("")}
+      ${days
+        .map(
+          (d) => `
+        <div class="mc-cell sc-${d.interp.tier} ${d.date.toDateString() === todayKey ? "mc-today" : ""}">
+          <div class="mc-day-num">${d.day}</div>
+          <div class="mc-day-score">${d.score}</div>
+        </div>`
+        )
+        .join("")}
+    </div>
+    <div class="map-legend-strip" style="margin-top:14px;">
+      <span><i class="legend-dot sc-0"></i>0–15</span>
+      <span><i class="legend-dot sc-1"></i>16–35</span>
+      <span><i class="legend-dot sc-2"></i>36–55</span>
+      <span><i class="legend-dot sc-3"></i>56–75</span>
+      <span><i class="legend-dot sc-4"></i>76–100</span>
+    </div>
+  `;
+
+  document.getElementById("mc-prev").addEventListener("click", () => renderMoonCalendarMonth(point, monthOffset - 1));
+  document.getElementById("mc-next").addEventListener("click", () => renderMoonCalendarMonth(point, monthOffset + 1));
 }
 
 function openLeaderboard() {
