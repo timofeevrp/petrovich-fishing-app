@@ -199,10 +199,6 @@ function showView(viewId, { pushHistory = true } = {}) {
   if (viewId === "map") initMapIfNeeded();
   if (viewId === "favorites") renderFavorites();
   if (viewId === "profile") renderProfile();
-  if (viewId === "home" && (homeLoadFailed || state.homeStale)) {
-    state.homeStale = false;
-    loadHome();
-  }
 }
 
 // "← Назад" в интерфейсе идёт тем же путём, что и системная кнопка "назад"
@@ -229,6 +225,17 @@ document.querySelectorAll("[data-back]").forEach((btn) => {
   btn.addEventListener("click", goBack);
 });
 
+// Главная теперь статична (2 карточки, без сети) — хаб-клики вешаем один
+// раз при загрузке модуля, а не при каждом перерендере, как было раньше.
+document.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "forecast" });
+  openForecastScreen();
+});
+document.querySelector('[data-hub="reports"]').addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "reports" });
+  openRegions();
+});
+
 // ---------- ОНБОРДИНГ ----------
 
 function enterApp() {
@@ -240,7 +247,6 @@ function showOnboardingIfNeeded() {
   const profile = Storage.getProfile();
   if (profile.onboardingSeen) {
     enterApp();
-    loadHome();
   } else {
     Storage.trackEvent("onboarding_shown");
     document.getElementById("view-onboarding").classList.remove("hidden");
@@ -248,17 +254,21 @@ function showOnboardingIfNeeded() {
   }
 }
 
-document.getElementById("btn-onboarding-start").addEventListener("click", () => {
+document.getElementById("btn-onboarding-start").addEventListener("click", async () => {
   Storage.trackEvent("onboarding_geo_requested");
   Storage.updateProfile({ onboardingSeen: true });
   enterApp();
-  loadHome();
+  // Главная больше не грузит прогноз сама — но раз человек явно попросил
+  // геолокацию именно тут, спрашиваем разрешение сразу (в моменте, пока
+  // намерение свежее), а не откладываем до первого тапа в "Прогноз клёва".
+  const loc = await getLocation();
+  state.userLocation = loc || DEFAULT_CENTER;
+  state.geoDenied = !loc;
 });
 document.getElementById("btn-onboarding-skip").addEventListener("click", () => {
   Storage.trackEvent("onboarding_primary_click");
   Storage.updateProfile({ onboardingSeen: true });
   enterApp();
-  loadHome({ skipGeo: true });
 });
 
 // ---------- ГЛАВНАЯ ----------
@@ -297,13 +307,25 @@ function getGreeting() {
   return "Добрый вечер";
 }
 
-async function loadHome({ skipGeo = false } = {}) {
-  const loadingEl = document.getElementById("home-loading");
-  const contentEl = document.getElementById("home-content");
+// Прогноз клёва живёт на отдельном экране (не на главной) — открывается
+// заново при каждом тапе на хаб-карточку "Прогноз клёва", поэтому данные
+// всегда свежие и отдельный флаг "устарело" (как раньше state.homeStale)
+// больше не нужен: getPointForecast всё равно кэширует запросы сама.
+// showView вызывается только при первом открытии (навигация), а не при
+// повторной подгрузке той же самой уже открытой страницы (кнопка
+// "Повторить"/"Разрешить доступ") — иначе каждый такой клик плодил бы
+// лишнюю запись в истории браузера, как было с месяцами лунного календаря.
+function openForecastScreen() {
+  showView("forecast");
+  renderForecast();
+}
+
+async function renderForecast({ skipGeo = false } = {}) {
+  const loadingEl = document.getElementById("forecast-loading");
+  const contentEl = document.getElementById("forecast-content");
   loadingEl.innerHTML = renderHomeSkeleton();
   loadingEl.classList.remove("hidden");
   contentEl.classList.add("hidden");
-  homeLoadFailed = false;
 
   try {
 
@@ -334,9 +356,8 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.classList.remove("hidden");
 
   if (!withForecast.length) {
-    homeLoadFailed = true;
-    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-home">Повторить</button></div>`;
-    document.getElementById("retry-home").addEventListener("click", () => loadHome());
+    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-forecast">Повторить</button></div>`;
+    document.getElementById("retry-forecast").addEventListener("click", () => renderForecast());
     return;
   }
 
@@ -410,19 +431,6 @@ async function loadHome({ skipGeo = false } = {}) {
     : { icon: "📍", text: "Рядом с вами (геолокация)" };
 
   const html = `
-    <div class="hub-grid">
-      <div class="hub-card hub-card-banner" data-hub="forecast">
-        <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
-        <div class="hub-label">Прогноз клёва</div>
-        <div class="hub-sub">Шансы, часы и причины — прямо сейчас</div>
-      </div>
-      <div class="hub-card hub-card-banner" data-hub="reports">
-        <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
-        <div class="hub-label">Отчёты рыбаков</div>
-        <div class="hub-sub">Кто и что поймал рядом с вами</div>
-      </div>
-    </div>
-
     <div class="location-context" id="location-context">${locationContext.icon} ${escapeHtml(locationContext.text)} · изменить</div>
 
     <div class="card" id="home-forecast-anchor">
@@ -453,15 +461,6 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.innerHTML = html;
   bindOpenPointButtons(contentEl);
 
-  contentEl.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
-    Storage.trackEvent("hub_click", { hub: "forecast" });
-    document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => {
-    Storage.trackEvent("hub_click", { hub: "reports" });
-    openRegions();
-  });
-
   document.getElementById("hero-route-btn").addEventListener("click", () => {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
   });
@@ -474,7 +473,7 @@ async function loadHome({ skipGeo = false } = {}) {
   });
 
   const geoAllowBtn = document.getElementById("btn-geo-allow");
-  if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
+  if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => renderForecast());
   const geoMapBtn = document.getElementById("btn-geo-map");
   if (geoMapBtn) geoMapBtn.addEventListener("click", () => showView("map"));
   const geoProfileBtn = document.getElementById("btn-geo-profile");
@@ -486,11 +485,10 @@ async function loadHome({ skipGeo = false } = {}) {
   } catch (err) {
     // Раньше при сбое сети экран навсегда оставался с крутилкой — теперь
     // явная ошибка с кнопкой "Повторить", как и на карточке точки.
-    homeLoadFailed = true;
     loadingEl.classList.add("hidden");
     contentEl.classList.remove("hidden");
-    contentEl.innerHTML = `<div class="empty-state"><div class="icon">📡</div>Не получилось загрузить главную. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-home">Повторить</button></div>`;
-    document.getElementById("retry-home").addEventListener("click", () => loadHome());
+    contentEl.innerHTML = `<div class="empty-state"><div class="icon">📡</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-forecast">Повторить</button></div>`;
+    document.getElementById("retry-forecast").addEventListener("click", () => renderForecast());
   }
 }
 
@@ -612,7 +610,6 @@ function bindOpenPointButtons(container) {
 
 // ---------- КАРТА ----------
 
-let homeLoadFailed = false;
 let mapInitialized = false;
 function initMapIfNeeded() {
   if (mapInitialized) {
@@ -740,7 +737,6 @@ async function showPlaceSheet(point) {
     });
     document.getElementById("ps-save-btn").addEventListener("click", () => {
       Storage.toggleFavorite(point.id);
-      state.homeStale = true;
       showPlaceSheet(point);
     });
   } catch {
@@ -913,7 +909,6 @@ function saveAdhocPoint(point) {
   const saved = { ...point, id: "u" + Date.now(), name, type, town: point.town || "Добавлено вами", adhoc: false };
   Storage.addUserPoint(saved);
   Storage.toggleFavorite(saved.id);
-  state.homeStale = true;
   if (mapInitialized) renderMarkers();
   return saved;
 }
@@ -1090,7 +1085,6 @@ async function openPoint(pointOrId) {
         openPoint(saved.id);
       } else {
         Storage.toggleFavorite(point.id);
-        state.homeStale = true;
         openPoint(point.id);
       }
     });
@@ -1784,7 +1778,6 @@ function renderFavoritesList(container) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       Storage.toggleFavorite(btn.dataset.removeFav);
-      state.homeStale = true;
       showToast("Убрано из избранного");
       renderFavorites();
     });

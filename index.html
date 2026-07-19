@@ -41,13 +41,30 @@
 
     <main id="views">
 
-      <!-- HOME VIEW -->
+      <!-- HOME VIEW (только точка входа — 2 карточки, без сети) -->
       <section id="view-home" class="view active">
-        <div id="home-loading" class="state-block">
+        <div class="hub-grid hub-grid-main">
+          <div class="hub-card hub-card-banner" data-hub="forecast">
+            <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
+            <div class="hub-label">Прогноз клёва</div>
+            <div class="hub-sub">Шансы, часы и причины — прямо сейчас</div>
+          </div>
+          <div class="hub-card hub-card-banner" data-hub="reports">
+            <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
+            <div class="hub-label">Отчёты рыбаков</div>
+            <div class="hub-sub">Кто и что поймал рядом с вами</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FORECAST VIEW (прогноз клёва — открывается с главной по тапу) -->
+      <section id="view-forecast" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
+        <div id="forecast-loading" class="state-block">
           <div class="spinner"></div>
           <p>Определяем ваше местоположение и считаем прогноз...</p>
         </div>
-        <div id="home-content" class="hidden"></div>
+        <div id="forecast-content" class="hidden"></div>
       </section>
 
       <!-- MAP VIEW -->
