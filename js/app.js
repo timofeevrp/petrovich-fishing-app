@@ -587,36 +587,6 @@ async function renderForecast({ skipGeo = false } = {}) {
       </div>`
     : "";
 
-  // Избранные места должны реально влиять на главную, а не требовать
-  // отдельного похода на вкладку "Избранное" — тянем их прогноз отдельно
-  // от "ближайших 8", т.к. любимое место может быть не в этом радиусе.
-  const favIdSet = new Set(Storage.getFavorites());
-  const favPoints = [...favIdSet].map((id) => getPointById(id)).filter(Boolean);
-  const favForecastsRaw = await mapWithConcurrency(favPoints, 3, (p) => getPointForecast(p).catch(() => null));
-  const favEntries = favPoints
-    .map((point, i) => ({ point, forecast: favForecastsRaw[i], distanceKm: haversineKm(state.userLocation, point) }))
-    .filter((x) => x.forecast)
-    .map((entry) => ({
-      ...entry,
-      windows: computeDayWindows(entry.forecast.weather, entry.point.lat, entry.point.lon, Storage.getReports(entry.point.id)),
-      isFavorite: true,
-    }));
-
-  // Один список "куда поехать" вместо двух пересекающихся (избранное отдельно
-  // и общий топ отдельно) — избранные места идут первыми, без дублей.
-  const bestPoints = [
-    ...favEntries,
-    ...withForecast
-      .filter((x) => !favIdSet.has(x.point.id))
-      .slice()
-      .sort((a, b) => b.forecast.result.score - a.forecast.result.score)
-      .slice(0, 3)
-      .map((entry) => ({
-        ...entry,
-        windows: computeDayWindows(entry.forecast.weather, entry.point.lat, entry.point.lon, Storage.getReports(entry.point.id)),
-      })),
-  ];
-
   const locationContext = state.geoDenied
     ? state.usingRegionFallback
       ? { icon: "📍", text: `${profile.region} (по профилю)` }
@@ -644,15 +614,10 @@ async function renderForecast({ skipGeo = false } = {}) {
       ${warnings.map((w) => `<div class="warning-item"><span class="w-icon">${w.icon}</span><span>${w.text}</span></div>`).join("")}
     </div>` : ""}
 
-    <div class="section-header"><span class="icon">📍</span><h3>Куда поехать сегодня</h3></div>
-    <div class="card">
-      ${bestPoints.map((entry) => renderPlaceRecommendationCard(entry)).join("")}
-    </div>
     <button class="btn-secondary btn-full" id="forecast-map-btn">🗺️ Показать всё на карте</button>
   `;
 
   contentEl.innerHTML = html;
-  bindOpenPointButtons(contentEl);
 
   document.getElementById("forecast-map-btn").addEventListener("click", () => showView("map"));
 
@@ -678,27 +643,6 @@ async function renderForecast({ skipGeo = false } = {}) {
     contentEl.innerHTML = `<div class="empty-state"><div class="icon">📡</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-forecast">Повторить</button></div>`;
     document.getElementById("retry-forecast").addEventListener("click", () => renderForecast());
   }
-}
-
-// Более подробная карточка места для "Куда поехать сегодня" на главной —
-// отдельная от компактного renderPointListItem, который используют
-// избранное/регионы/поиск (там 3 доп. вычисления на точку не нужны).
-function renderPlaceRecommendationCard({ point, forecast, distanceKm, windows, isFavorite }) {
-  const interp = scoreInterpretation(forecast.result.score);
-  const reason = forecast.result.topFactors[0] || "";
-  return `
-    <div class="place-card" data-open-point="${point.id}">
-      <div class="point-mini-score sc-${interp.tier}">${forecast.result.score}</div>
-      <div style="flex:1;">
-        <div class="card-title">${isFavorite ? "⭐ " : ""}${point.name}</div>
-        <div class="card-sub" style="margin-bottom:6px;">${point.town || ""}${distanceKm != null ? " · " + distanceKm.toFixed(1) + " км" : ""}</div>
-        <div class="place-meta">
-          <span class="place-meta-chip">${windows.best.icon} Лучше ${windows.best.label.toLowerCase()}</span>
-          ${reason ? `<span class="place-meta-chip">${reason}</span>` : ""}
-        </div>
-      </div>
-      <span class="place-arrow">›</span>
-    </div>`;
 }
 
 function renderConfidenceBadge(result) {

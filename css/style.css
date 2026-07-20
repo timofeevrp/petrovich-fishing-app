@@ -322,26 +322,6 @@ main#views {
 .ln-actions { display: flex; gap: 8px; margin-top: 12px; }
 .ln-actions .btn-secondary { flex: 1; padding: 8px; font-size: 12px; }
 
-/* PLACE RECOMMENDATION CARD (Куда поехать сегодня) */
-.place-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--gray-200);
-  transition: background var(--transition-fast);
-}
-.place-card:last-child { border-bottom: none; }
-.place-card:active { background: var(--surface-raised); }
-.place-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.place-meta-chip {
-  background: var(--surface-raised);
-  border-radius: 20px;
-  padding: 3px 9px;
-  font-size: 11px;
-  color: var(--gray-500);
-}
 .place-arrow { color: var(--green-400); font-size: 20px; flex-shrink: 0; }
 
 /* STATS GRID (профиль) */
